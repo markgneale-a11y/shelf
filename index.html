@@ -137,7 +137,7 @@ section, .row, .cd { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
 .opt small { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
 .srow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; }
 
-/* artist name with quiet hover links: More (other albums) and Remove all */
+/* artist name with a quiet hover link: More (other albums) */
 .an-name { white-space: nowrap; }
 /* the links take no space until shown, so they never squeeze the name; they float just after it */
 .an-acts { display: inline-flex; gap: 2px; margin-left: 6px; padding-right: 4px; opacity: 0; pointer-events: none; transition: opacity .15s; vertical-align: middle; background: var(--bg); position: relative; z-index: 2; }
@@ -145,7 +145,6 @@ section, .row, .cd { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
 @media (hover: none) { .an-acts { opacity: .8; pointer-events: auto; } }
 .act { font: 500 11px var(--sans); letter-spacing: 0; color: var(--muted); background: none; border: 0; padding: 2px 5px; border-radius: 4px; cursor: pointer; }
 .act:hover, .act:focus-visible, .act.on { color: var(--fg); background: var(--line); outline: none; }
-.act[data-act="remove-artist"]:hover { color: var(--accent); }
 /* remove (top right) on hover */
 .ov.rm { top: 8px; bottom: auto; right: 8px; width: 24px; height: 24px; }
 .ov.rm svg { width: 11px; height: 11px; }

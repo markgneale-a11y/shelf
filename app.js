@@ -131,12 +131,11 @@ const STAR = '<svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.
 const REMOVE = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
 const ADD = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
 
-// The artist's name with quiet "More" and "Remove all" links that appear on hover
+// The artist's name with a quiet "More" link that appears on hover
 function artistHead(ar) {
   const open = expanded.has(ar.id), busy = loadingMore.has(ar.id);
   return `<span class="an-name">${esc(ar.name)}</span><span class="an-acts">` +
-    `<button class="act${open ? " on" : ""}" type="button" data-act="more" data-artist="${esc(ar.id)}" aria-expanded="${open}">${busy ? "Loading…" : open ? "Less" : "More"}</button>` +
-    `<button class="act" type="button" data-act="remove-artist" data-artist="${esc(ar.id)}">Remove all</button></span>`;
+    `<button class="act${open ? " on" : ""}" type="button" data-act="more" data-artist="${esc(ar.id)}" aria-expanded="${open}">${busy ? "Loading…" : open ? "Less" : "More"}</button></span>`;
 }
 
 function cdEl(a, sub, ar = null, ghost = false) {
@@ -302,15 +301,11 @@ async function removeAlbums(list, label, offerUndo = true) {
   else toast(`Removed ${label}`);
 }
 
-// Artist-name links (More / Remove all) work the same in both layouts
+// The artist-name "More" link works the same in both layouts
 $("main").addEventListener("click", e => {
   const btn = e.target.closest("[data-act]"); if (!btn) return;
   const ar = artistById(btn.dataset.artist); if (!ar) return;
   if (btn.dataset.act === "more") toggleMore(ar);
-  if (btn.dataset.act === "remove-artist") {
-    const list = albums.filter(a => a.artistId === ar.id);
-    removeAlbums(list, list.length === 1 ? `${ar.name}’s album` : `all ${list.length} ${ar.name} albums`);
-  }
 });
 
 // Small message at the bottom with an optional action (e.g. Undo)
