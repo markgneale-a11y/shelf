@@ -46,7 +46,7 @@ body {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 0 110px;
 }
-.wrap { max-width: 1320px; margin: 0 auto; padding-inline: min(var(--d-margin), 4vw); }
+.wrap { margin: 0 auto; padding-inline: min(var(--d-margin), 4vw); }
 
 /* top bar: A–Z jump links on the left, collection info on the right, one line */
 .topbar {
@@ -98,7 +98,7 @@ section, .row { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
   padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
 }
 /* same width and side margin as the page, so the thumbnail lines up with the covers' left edge */
-.player .in { max-width: 1320px; margin: 0 auto; display: flex; align-items: center; gap: 12px; padding-inline: min(var(--d-margin), 4vw); }
+.player .in { margin: 0 auto; display: flex; align-items: center; gap: 12px; padding-inline: min(var(--d-margin), 4vw); }
 .thumb { width: 44px; height: 44px; border-radius: 4px; flex: none; background: var(--line); object-fit: cover; }
 .np { min-width: 0; flex: 1; }
 .np .a { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -114,7 +114,34 @@ section, .row { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
 .cbtn:disabled { opacity: .3; cursor: default; background: none; }
 @media (max-width: 480px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; } }
 /* Spotify app additions */
-.topbar .right { display: flex; align-items: center; gap: 14px; }
+/* settings: a quiet gear in the top bar opens a small panel */
+.gear { width: 28px; height: 28px; border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; padding: 0; margin-right: -4px; }
+.gear svg { width: 18px; height: 18px; }
+.gear:hover, .gear[aria-expanded="true"] { color: var(--fg); background: var(--line); }
+.gear:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.settings { position: fixed; z-index: 9; top: calc(var(--topbar-h, 60px) + env(safe-area-inset-top, 0px) - 4px);
+  right: max(16px, env(safe-area-inset-right, 0px)); width: min(300px, calc(100vw - 32px));
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.14);
+  padding: 14px 16px 16px; font-size: 13px; }
+.shd { display: flex; align-items: center; justify-content: space-between; }
+.shd h3 { margin: 0; font-size: 14px; font-weight: 700; }
+.sx { border: 0; background: none; color: var(--muted); font-size: 20px; line-height: 1; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; }
+.sx:hover { background: var(--line); color: var(--fg); }
+.sgroup { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 14px 0 6px; }
+.opt { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; cursor: pointer; }
+.opt input { margin-top: 2px; accent-color: var(--accent); }
+.opt b { display: block; font-weight: 600; }
+.opt small { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
+.srow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; }
+
+/* "Side by side" layout: each artist's group is only as wide as its albums, and groups flow along the shelf */
+body.shelf #artists { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: calc(var(--d-gap-x) * 3); row-gap: var(--d-row-gap); margin-top: var(--d-row-gap); }
+body.shelf #artists section { display: contents; }
+body.shelf #artists .row { margin-top: 0; max-width: 100%; }
+body.shelf #artists .row h2 { width: 0; min-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.shelf #artists .grid { display: flex; flex-wrap: wrap; gap: var(--d-gap-y) var(--d-gap-x); }
+body.shelf #artists .cd { width: var(--d-cover); }
+@media (max-width: 480px) { body.shelf #artists .cd { width: calc((100vw - 32px - var(--d-gap-x)) / 2); } }
 .linkbtn { font: 12px var(--sans); color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; }
 .linkbtn:hover, .linkbtn:focus-visible { color: var(--fg); text-decoration: underline; outline: none; }
 .gate { min-height: 60vh; display: grid; place-items: center; text-align: center; }
@@ -130,14 +157,23 @@ section, .row { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
 <div class="wrap">
   <div class="topbar" id="topbar" hidden>
     <nav class="az" id="az" aria-label="Jump to letter"></nav>
-    <div class="right">
-      <div class="sub" id="summary"></div>
-      <button class="linkbtn" id="refresh" type="button">Refresh</button>
-      <button class="linkbtn" id="logout" type="button">Log out</button>
-    </div>
+    <button class="gear" id="settingsBtn" type="button" aria-label="Settings" aria-expanded="false" aria-controls="settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+    </button>
   </div>
   <main id="main"></main>
 </div>
+
+<aside class="settings" id="settings" aria-label="Settings" hidden>
+  <div class="shd"><h3>Settings</h3><button class="sx" id="settingsClose" type="button" aria-label="Close settings">&times;</button></div>
+  <div class="sgroup">Layout</div>
+  <label class="opt"><input type="radio" name="layout" value="rows" id="layout-rows"> <span><b>One artist per row</b><small>Each artist starts a new line</small></span></label>
+  <label class="opt"><input type="radio" name="layout" value="shelf" id="layout-shelf"> <span><b>Side by side</b><small>Artists flow along the shelf to fill the screen</small></span></label>
+  <div class="sgroup">Library</div>
+  <div class="srow"><span class="sub" id="summary"></span><button class="linkbtn" id="refresh" type="button">Refresh</button></div>
+  <div class="sgroup">Account</div>
+  <div class="srow"><span class="sub">Connected to Spotify</span><button class="linkbtn" id="logout" type="button">Log out</button></div>
+</aside>
 
 <div class="player" id="player" role="region" aria-label="Now playing" hidden>
   <div class="in">

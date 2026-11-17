@@ -166,16 +166,18 @@ function render() {
   const groups = {};
   artists.forEach(ar => (groups[letterOf(ar.name)] ??= []).push(ar));
   const letters = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ#"];
+  const wrapAll = document.createElement("div"); wrapAll.id = "artists"; main.appendChild(wrapAll);
   for (const L of letters.filter(l => groups[l])) {
-    const s = document.createElement("section"); s.id = "l-" + (L === "#" ? "num" : L);
-    for (const ar of groups[L]) {
+    const s = document.createElement("section");
+    for (const [i, ar] of groups[L].entries()) {
       const box = document.createElement("div"); box.className = "row";
+      if (i === 0) box.id = "l-" + (L === "#" ? "num" : L);   // jump target: the letter's first artist
       box.innerHTML = `<h2>${esc(ar.name)}</h2>`;
       const g = document.createElement("div"); g.className = "grid";
       ar.albums.forEach(a => g.appendChild(cdEl(a, a.year)));
       box.appendChild(g); s.appendChild(box);
     }
-    main.appendChild(s);
+    wrapAll.appendChild(s);
   }
   $("az").innerHTML = `<a href="#favourites">Favourites</a>` +
     letters.map(L => groups[L] ? `<a href="#l-${L === "#" ? "num" : L}">${L}</a>` : `<span aria-hidden="true">${L}</span>`).join("");
@@ -271,6 +273,26 @@ $("next").onclick = () => player?.nextTrack();
 $("pp").onclick = () => player?.togglePlay();
 $("logout").onclick = logout;
 $("refresh").onclick = async () => { $("refresh").textContent = "Refreshing…"; try { await loadLibrary(); } finally { $("refresh").textContent = "Refresh"; } };
+
+// ---------- Settings panel ----------
+const settings = $("settings"), gear = $("settingsBtn");
+function setSettings(open) {
+  settings.hidden = !open; gear.setAttribute("aria-expanded", open);
+  if (open) settings.querySelector("input:checked, input")?.focus();
+}
+gear.onclick = () => setSettings(settings.hidden);
+$("settingsClose").onclick = () => { setSettings(false); gear.focus(); };
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !settings.hidden) { setSettings(false); gear.focus(); } });
+document.addEventListener("click", e => { if (!settings.hidden && !settings.contains(e.target) && !gear.contains(e.target)) setSettings(false); });
+
+// Layout: "rows" (one artist per row) or "shelf" (artists side by side)
+function applyLayout(v) {
+  document.body.classList.toggle("shelf", v === "shelf");
+  $("layout-" + v).checked = true;
+  store.set("shelf-layout", v);
+}
+document.querySelectorAll('input[name="layout"]').forEach(r => r.onchange = () => applyLayout(r.value));
+applyLayout(store.get("shelf-layout", "rows") === "shelf" ? "shelf" : "rows");
 
 // Keep jump targets clear of the sticky top bar, whatever its height (it can wrap to two lines)
 const topbarEl = $("topbar");
