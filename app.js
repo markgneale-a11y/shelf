@@ -387,6 +387,7 @@ function showState() {
   $("ppi").innerHTML = s.paused ? ICON_PLAY : ICON_PAUSE;
   $("pp").setAttribute("aria-label", s.paused ? "Play" : "Pause");
   $("next").disabled = !s.track_window.next_tracks?.length;
+  if ($("player").classList.contains("open")) { if (nowAlbumUri !== t.album.uri) queueMicrotask(fillDrawer); else markNowTrack(); }
   if (nowAlbumUri !== t.album.uri) {
     nowAlbumUri = t.album.uri;
     document.querySelectorAll(".cd").forEach(el => el.classList.toggle("playing", el.dataset.uri === nowAlbumUri));
@@ -403,6 +404,75 @@ setInterval(() => { if (pState && !pState.paused) showState(); }, 500);
 // Previous: restart the track if more than 3 seconds in, otherwise go back one (like a CD player)
 $("prev").onclick = () => { if (!player || !pState) return; const pos = pState.position + (pState.paused ? 0 : performance.now() - pStateAt); pos > 3000 ? player.seek(0) : player.previousTrack(); };
 $("next").onclick = () => player?.nextTrack();
+
+// ---------- Track drawer: click the bar to see the playing album's tracks ----------
+const trackCache = new Map();             // album id -> {title, artist, year, tracks}; one request per album
+let drawerAlbumId = null;
+function nowAlbumId() { return nowAlbumUri?.split(":").pop() || null; }
+function currentTrackUris() {
+  const t = pState?.track_window?.current_track;
+  return t ? [t.uri, t.linked_from?.uri].filter(Boolean) : [];
+}
+async function albumTracks(id) {
+  if (trackCache.has(id)) return trackCache.get(id);
+  const r = await api(`/albums/${id}?market=from_token`);
+  if (!r.ok) throw new Error(r.status === 429 ? "Spotify is busy right now. Try again in a minute." : "Couldn't load the tracks (" + r.status + ")");
+  const a = await r.json();
+  let items = a.tracks.items, next = a.tracks.next;
+  while (next) { const r2 = await api(next.replace("https://api.spotify.com/v1", "")); if (!r2.ok) break; const j = await r2.json(); items = items.concat(j.items); next = j.next; }
+  const info = { uri: a.uri, title: a.name, artist: a.artists.map(x => x.name).join(", "), year: (a.release_date || "").slice(0, 4),
+    tracks: items.map(t => ({ uri: t.uri, name: t.name, ms: t.duration_ms, n: t.track_number, disc: t.disc_number,
+      artists: t.artists.map(x => x.name).join(", ") })) };
+  trackCache.set(id, info);
+  return info;
+}
+function markNowTrack() {
+  const uris = currentTrackUris();
+  document.querySelectorAll("#tracks .trk").forEach(li => li.classList.toggle("now", uris.includes(li.dataset.uri)));
+}
+async function fillDrawer() {
+  const id = nowAlbumId();
+  if (!id || id === drawerAlbumId) { markNowTrack(); return; }
+  drawerAlbumId = id;
+  const list = $("tracks");
+  $("drt").textContent = pState?.track_window?.current_track?.album?.name || ""; $("drs").textContent = "";
+  list.innerHTML = '<li class="msg">Loading tracks…</li>';
+  try {
+    const a = await albumTracks(id);
+    if (drawerAlbumId !== id) return;
+    $("drt").textContent = a.title; $("drs").textContent = [a.artist, a.year, a.tracks.length + " tracks"].filter(Boolean).join(" · ");
+    const discs = new Set(a.tracks.map(t => t.disc)).size > 1;
+    list.innerHTML = "";
+    let disc = 0;
+    for (const t of a.tracks) {
+      if (discs && t.disc !== disc) { disc = t.disc; const h = document.createElement("li"); h.className = "disc"; h.textContent = "Disc " + disc; list.appendChild(h); }
+      const li = document.createElement("li"); li.className = "trk"; li.dataset.uri = t.uri;
+      const extra = t.artists && t.artists !== a.artist ? ` <span class="ar">— ${esc(t.artists)}</span>` : "";
+      li.innerHTML = `<span class="n">${t.n}</span><span class="nm">${esc(t.name)}${extra}</span><span class="d">${fmt(t.ms)}</span>`;
+      li.onclick = e => { e.stopPropagation(); playTrack(a, t); };
+      list.appendChild(li);
+    }
+    markNowTrack();
+  } catch (err) { drawerAlbumId = null; list.innerHTML = `<li class="msg">${esc(err.message)}</li>`; }
+}
+async function playTrack(a, t) {
+  player?.activateElement?.();
+  if (player && currentTrackUris().includes(t.uri)) { player.togglePlay(); return; }
+  const q = deviceId ? "?device_id=" + deviceId : "";
+  const r = await api("/me/player/play" + q, { method: "PUT", body: JSON.stringify({ context_uri: a.uri, offset: { uri: t.uri } }) });
+  if (!r.ok && r.status !== 202) toast("Couldn't play that track (" + r.status + ")");
+}
+function setDrawer(open) {
+  if (open && !nowAlbumUri) return;
+  $("player").classList.toggle("open", open);
+  $("drawer").setAttribute("aria-hidden", String(!open));
+  $("barIn").title = open ? "Hide tracks" : "Show tracks";
+  if (open) fillDrawer();
+}
+$("barIn").onclick = e => { if (e.target.closest(".ctrls")) return; setDrawer(!$("player").classList.contains("open")); };
+document.addEventListener("keydown", e => { if (e.key === "Escape" && $("player").classList.contains("open")) setDrawer(false); });
+// Clicking anywhere outside the player closes the drawer
+document.addEventListener("click", e => { if ($("player").classList.contains("open") && !e.target.closest("#player")) setDrawer(false); });
 $("pp").onclick = () => player?.togglePlay();
 $("logout").onclick = logout;
 $("refresh").onclick = async () => { $("refresh").textContent = "Refreshing…"; try { await loadLibrary(); } finally { $("refresh").textContent = "Refresh"; } };
