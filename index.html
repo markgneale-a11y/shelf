@@ -67,6 +67,9 @@ nav.az a:hover, nav.az a:focus-visible { background: var(--line); outline: none;
 section, .row, .cd { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
 .row { margin-top: var(--d-row-gap); }
 #favourites { margin-top: 26px; }
+/* with no Favourites, the artists start just below the top bar */
+#main > #artists:first-child { margin-top: 26px; }
+#main > #artists:first-child > section:first-child > .row:first-child { margin-top: 0; }
 .row h2 { font-family: var(--d-h-font); font-size: var(--d-h-size); font-weight: var(--d-h-weight); letter-spacing: var(--d-h-ls); line-height: 1.25; margin: 0 0 var(--d-h-gap); }
 .empty { font-size: 13px; color: var(--muted); }
 
@@ -167,8 +170,8 @@ body.shelf #artists .an { display: block; height: 1.25em; font-family: var(--d-h
 <aside class="settings" id="settings" aria-label="Settings" hidden>
   <div class="shd"><h3>Settings</h3><button class="sx" id="settingsClose" type="button" aria-label="Close settings">&times;</button></div>
   <div class="sgroup">Layout</div>
+  <label class="opt"><input type="radio" name="layout" value="shelf" id="layout-shelf"> <span><b>Side by side</b><small>Albums fill the screen on one even grid</small></span></label>
   <label class="opt"><input type="radio" name="layout" value="rows" id="layout-rows"> <span><b>One artist per row</b><small>Each artist starts a new line</small></span></label>
-  <label class="opt"><input type="radio" name="layout" value="shelf" id="layout-shelf"> <span><b>Side by side</b><small>Artists flow along the shelf to fill the screen</small></span></label>
   <div class="sgroup">Library</div>
   <div class="srow"><span class="sub" id="summary"></span><button class="linkbtn" id="refresh" type="button">Refresh</button></div>
   <div class="sgroup">Account</div>

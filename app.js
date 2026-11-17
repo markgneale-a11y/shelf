@@ -155,13 +155,14 @@ function render() {
   const artists = [...byArtist.values()].sort((x, y) => sortKey(x.name).localeCompare(sortKey(y.name), undefined, { sensitivity: "base" }));
   artists.forEach(ar => ar.albums.sort((p, q) => p.date.localeCompare(q.date) || p.title.localeCompare(q.title)));
 
-  // Favourites
-  const fs = document.createElement("section"); fs.id = "favourites"; fs.className = "row";
+  // Favourites: only shown once you've starred something
   const favList = artists.flatMap(ar => ar.albums).filter(a => favs.has(a.id));
-  fs.innerHTML = `<h2>Favourites</h2>`;
-  if (!favList.length) fs.insertAdjacentHTML("beforeend", `<div class="empty">Hover over any album and tap the star to keep it here.</div>`);
-  else { const g = document.createElement("div"); g.className = "grid"; favList.forEach(a => g.appendChild(cdEl(a, a.artist))); fs.appendChild(g); }
-  main.appendChild(fs);
+  if (favList.length) {
+    const fs = document.createElement("section"); fs.id = "favourites"; fs.className = "row";
+    fs.innerHTML = `<h2>Favourites</h2>`;
+    const g = document.createElement("div"); g.className = "grid"; favList.forEach(a => g.appendChild(cdEl(a, a.artist))); fs.appendChild(g);
+    main.appendChild(fs);
+  }
 
   const groups = {};
   artists.forEach(ar => (groups[letterOf(ar.name)] ??= []).push(ar));
@@ -179,7 +180,7 @@ function render() {
     }
     wrapAll.appendChild(s);
   }
-  $("az").innerHTML = `<a href="#favourites">Favourites</a>` +
+  $("az").innerHTML = (favList.length ? `<a href="#favourites">Favourites</a>` : "") +
     letters.map(L => groups[L] ? `<a href="#l-${L === "#" ? "num" : L}">${L}</a>` : `<span aria-hidden="true">${L}</span>`).join("");
   // Letter links: in the side-by-side grid the artist's row has no box of its own, so jump to its first album
   $("az").querySelectorAll("a").forEach(link => link.onclick = e => {
@@ -301,7 +302,7 @@ function applyLayout(v) {
   store.set("shelf-layout", v);
 }
 document.querySelectorAll('input[name="layout"]').forEach(r => r.onchange = () => applyLayout(r.value));
-applyLayout(store.get("shelf-layout", "rows") === "shelf" ? "shelf" : "rows");
+applyLayout(store.get("shelf-layout", "shelf") === "rows" ? "rows" : "shelf");   // side by side is the default
 
 // Keep jump targets clear of the sticky top bar, whatever its height (it can wrap to two lines)
 const topbarEl = $("topbar");
