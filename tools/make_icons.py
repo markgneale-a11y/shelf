@@ -24,8 +24,8 @@ def mix(a, b, t):
 # Brand red (the app's accent colour, #fa2d48)
 RED = (0xFA / 255, 0x2D / 255, 0x48 / 255)
 WHITE = (1.0, 1.0, 1.0)
-RING_RADIUS = 0.27   # centre line of the ring, as a share of the icon width
-RING_WIDTH = 0.085   # bold stroke
+RING_RADIUS = 0.24   # centre line of the ring, as a share of the icon width
+RING_WIDTH = 0.14    # thick stroke: the hole is about half the ring's outer size
 
 
 def colour(u, v):
