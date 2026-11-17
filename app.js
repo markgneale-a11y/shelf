@@ -82,7 +82,13 @@ async function api(path, opts = {}) {
   });
   let r = await go();
   if (r.status === 401) { const t = store.get("shelf-token"); if (t) { t.expires = 0; store.set("shelf-token", t); } r = await go(); }
-  if (r.status === 429) { await new Promise(res => setTimeout(res, (+r.headers.get("Retry-After") || 2) * 1000)); r = await go(); }
+  // Rate limited: wait as Spotify asks (or 2, 4, 8 seconds) and try again; give up if the wait would be long
+  for (let tries = 0; r.status === 429 && tries < 3; tries++) {
+    const wait = (+r.headers.get("Retry-After") || 2 ** (tries + 1)) * 1000;
+    if (wait > 15000) break;
+    await new Promise(res => setTimeout(res, wait));
+    r = await go();
+  }
   return r;
 }
 
@@ -228,11 +234,15 @@ function showGate(message) {
 async function loadLibrary() {
   if (!albums.length) $("main").innerHTML = `<div class="loading" id="loadmsg">Loading your albums…</div>`;
   const fresh = await fetchLibrary((n, total) => { const m = $("loadmsg"); if (m) m.textContent = `Loading your albums… ${n} of ${total}`; });
-  albums = fresh; store.set("shelf-library", fresh); render();
+  albums = fresh; store.set("shelf-library", fresh); store.set("shelf-library-at", Date.now()); render();
 }
 
 // ---------- More by this artist, saving and removing ----------
-const expanded = new Set(), loadingMore = new Set(), moreCache = {};
+const expanded = new Set(), loadingMore = new Set();
+// Other albums per artist, kept for a week so "More" doesn't ask Spotify again
+const MORE_TTL = 7 * 24 * 3600 * 1000;
+const moreCache = Object.fromEntries(Object.entries(store.get("shelf-more", {})).filter(([, v]) => Date.now() - v.at < MORE_TTL).map(([k, v]) => [k, v.list]));
+const saveMoreCache = () => store.set("shelf-more", Object.fromEntries(Object.entries(moreCache).map(([k, list]) => [k, { at: Date.now(), list }])));
 const artistById = id => { const a = albums.find(x => x.artistId === id); return a && { id, name: a.artist }; };
 // "Album (Remastered)", "Album [Deluxe]" and "Album - 2011 Remaster" count as the same album
 const normTitle = t => t.toLowerCase().replace(/\s*[([].*?[)\]]\s*/g, " ").replace(/\s+-\s+.*$/, "").replace(/[^a-z0-9]+/g, " ").trim();
@@ -251,8 +261,9 @@ async function toggleMore(ar) {
       const list = [];
       // Spotify allows at most 10 per page here, so follow the "next" links
       let url = `/artists/${encodeURIComponent(ar.id)}/albums?include_groups=album&limit=10&market=from_token`;
-      while (url && list.length < 100) {
+      while (url && list.length < 50) {          // up to 5 pages: plenty for nearly every artist
         const r = await api(url);
+        if (r.status === 429) throw new Error("Spotify is busy right now. Try More again in a minute.");
         if (!r.ok) throw new Error("Couldn't load more albums (" + r.status + ")");
         const page = await r.json();
         page.items.forEach(a => list.push({ ...albumFromApi(a), artist: ar.name, artistId: ar.id }));
@@ -261,7 +272,7 @@ async function toggleMore(ar) {
       // one entry per album title, keeping the original release
       const seen = new Map();
       list.sort((p, q) => p.date.localeCompare(q.date)).forEach(a => { const k = normTitle(a.title); if (!seen.has(k)) seen.set(k, a); });
-      moreCache[ar.id] = [...seen.values()];
+      moreCache[ar.id] = [...seen.values()]; saveMoreCache();
     } catch (e) { toast(e.message); loadingMore.delete(ar.id); render(); return; }
     loadingMore.delete(ar.id);
   }
@@ -428,7 +439,9 @@ store.del("shelf-design");               // old Design drawer settings are no lo
   if (!store.get("shelf-token")) { showGate(); return; }
   if (albums.length) render();          // show the cached shelf straight away
   initPlayer();
-  try { await loadLibrary(); }
+  // Re-check Spotify on opening only if the saved copy is over 15 minutes old (Refresh in Settings forces it)
+  const fresh = albums.length && Date.now() - store.get("shelf-library-at", 0) < 15 * 60 * 1000;
+  try { if (!fresh) await loadLibrary(); }
   catch (e) {
     if (e.message === "not-logged-in" || /login failed/i.test(e.message)) showGate("Your Spotify login has expired. Please connect again.");
     else if (!albums.length) $("main").innerHTML = `<div class="loading">${esc(e.message)}</div>`;
