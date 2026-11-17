@@ -4,6 +4,7 @@
 const CLIENT_ID = "38ba190453174cd1ba500ac85e9d4d3b";
 const SCOPES = [
   "user-library-read",          // read your saved albums
+  "user-library-modify",        // save and remove albums
   "streaming",                  // play music in this browser tab
   "user-read-email", "user-read-private",
   "user-read-playback-state", "user-modify-playback-state",
@@ -45,7 +46,7 @@ async function tokenRequest(params) {
   if (!r.ok) throw new Error("Spotify login failed (" + r.status + ")");
   const t = await r.json();
   const prev = store.get("shelf-token", {});
-  const tok = { access: t.access_token, refresh: t.refresh_token || prev.refresh, expires: Date.now() + (t.expires_in - 60) * 1000 };
+  const tok = { access: t.access_token, refresh: t.refresh_token || prev.refresh, scope: t.scope || prev.scope || "", expires: Date.now() + (t.expires_in - 60) * 1000 };
   store.set("shelf-token", tok);
   return tok;
 }
@@ -95,6 +96,16 @@ function pickImage(images, want) {
   return (sorted.find(i => (i.width || 0) >= want) || sorted[sorted.length - 1]).url;
 }
 
+function albumFromApi(a) {
+  return {
+    id: a.id, uri: a.uri, title: a.name,
+    artist: a.artists?.[0]?.name || "Unknown artist",
+    artistId: a.artists?.[0]?.id || a.artists?.[0]?.name,
+    date: a.release_date || "", year: (a.release_date || "").slice(0, 4),
+    img: pickImage(a.images, 300), thumb: pickImage(a.images, 64),
+  };
+}
+
 async function fetchLibrary(onProgress) {
   const out = [];
   let url = "/me/albums?limit=50&offset=0", total = null;
@@ -103,16 +114,7 @@ async function fetchLibrary(onProgress) {
     if (!r.ok) throw new Error("Couldn't load your albums (" + r.status + ")");
     const page = await r.json();
     total = page.total;
-    for (const { album: a } of page.items) {
-      if (!a) continue;
-      out.push({
-        id: a.id, uri: a.uri, title: a.name,
-        artist: a.artists?.[0]?.name || "Unknown artist",
-        artistId: a.artists?.[0]?.id || a.artists?.[0]?.name,
-        date: a.release_date || "", year: (a.release_date || "").slice(0, 4),
-        img: pickImage(a.images, 300), thumb: pickImage(a.images, 64),
-      });
-    }
+    for (const { album: a } of page.items) if (a) out.push(albumFromApi(a));
     onProgress?.(out.length, total);
     url = page.next ? page.next.replace("https://api.spotify.com/v1", "") : null;
   }
@@ -126,19 +128,37 @@ const saveFavs = () => store.set("shelf-favs-spotify", [...favs]);
 const ICON_PLAY = '<path d="M7 4v16l13-8z"/>', ICON_PAUSE = '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>';
 const STAR = '<svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6L2.5 9.4l6.6-.8z"/></svg>';
 
-function cdEl(a, sub, header = "") {
+const REMOVE = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+const ADD = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+
+// The artist's name with quiet "More" and "Remove all" links that appear on hover
+function artistHead(ar) {
+  const open = expanded.has(ar.id), busy = loadingMore.has(ar.id);
+  return `<span class="an-name">${esc(ar.name)}</span><span class="an-acts">` +
+    `<button class="act${open ? " on" : ""}" type="button" data-act="more" data-artist="${esc(ar.id)}" aria-expanded="${open}">${busy ? "Loading…" : open ? "Less" : "More"}</button>` +
+    `<button class="act" type="button" data-act="remove-artist" data-artist="${esc(ar.id)}">Remove all</button></span>`;
+}
+
+function cdEl(a, sub, ar = null, ghost = false) {
   const d = document.createElement("div");
-  d.className = "cd" + (nowAlbumUri === a.uri ? " playing" : ""); d.dataset.uri = a.uri;
+  d.className = "cd" + (ghost ? " ghost" : "") + (nowAlbumUri === a.uri ? " playing" : ""); d.dataset.uri = a.uri;
   const fav = favs.has(a.id);
-  d.innerHTML = `<div class="an">${esc(header)}</div><div class="art">
+  d.innerHTML = `<div class="an">${ar ? artistHead(ar) : ""}</div><div class="art">
       <button class="cover" type="button" aria-label="Play ${esc(a.title)} by ${esc(a.artist)}"><img alt="" loading="lazy" src="${esc(a.img)}"></button>
       <button class="ov play" type="button" tabindex="-1" aria-hidden="true"><svg viewBox="0 0 24 24">${ICON_PLAY}</svg></button>
-      <button class="ov star" type="button" aria-pressed="${fav}" aria-label="${fav ? "Remove from" : "Add to"} favourites">${STAR}</button>
+      ${ghost
+        ? `<button class="ov add" type="button" aria-label="Save ${esc(a.title)} to your library">${ADD}</button>`
+        : `<button class="ov star" type="button" aria-pressed="${fav}" aria-label="${fav ? "Remove from" : "Add to"} favourites">${STAR}</button>
+           <button class="ov rm" type="button" aria-label="Remove ${esc(a.title)} from your library">${REMOVE}</button>`}
     </div>
     <div class="t" title="${esc(a.title)}">${esc(a.title)}</div><div class="y">${esc(sub)}</div>`;
   d.querySelector(".cover").onclick = () => playAlbum(a);
   d.querySelector(".ov.play").onclick = () => playAlbum(a);
-  d.querySelector(".star").onclick = () => { fav ? favs.delete(a.id) : favs.add(a.id); saveFavs(); render(); };
+  if (ghost) d.querySelector(".add").onclick = () => saveAlbum(a);
+  else {
+    d.querySelector(".star").onclick = () => { fav ? favs.delete(a.id) : favs.add(a.id); saveFavs(); render(); };
+    d.querySelector(".rm").onclick = () => removeAlbums([a], `“${a.title}”`);
+  }
   return d;
 }
 
@@ -149,7 +169,7 @@ function render() {
   // Group by artist, A–Z ("The" ignored); each artist's albums oldest first
   const byArtist = new Map();
   for (const a of albums) {
-    if (!byArtist.has(a.artistId)) byArtist.set(a.artistId, { name: a.artist, albums: [] });
+    if (!byArtist.has(a.artistId)) byArtist.set(a.artistId, { id: a.artistId, name: a.artist, albums: [] });
     byArtist.get(a.artistId).albums.push(a);
   }
   const artists = [...byArtist.values()].sort((x, y) => sortKey(x.name).localeCompare(sortKey(y.name), undefined, { sensitivity: "base" }));
@@ -173,9 +193,10 @@ function render() {
     for (const [i, ar] of groups[L].entries()) {
       const box = document.createElement("div"); box.className = "row";
       if (i === 0) box.id = "l-" + (L === "#" ? "num" : L);   // jump target: the letter's first artist
-      box.innerHTML = `<h2>${esc(ar.name)}</h2>`;
+      box.innerHTML = `<h2>${artistHead(ar)}</h2>`;
       const g = document.createElement("div"); g.className = "grid";
-      ar.albums.forEach((a, i) => g.appendChild(cdEl(a, a.year, i === 0 ? ar.name : "")));
+      ar.albums.forEach((a, i) => g.appendChild(cdEl(a, a.year, i === 0 ? ar : null)));
+      for (const a of expanded.has(ar.id) ? otherAlbums(ar) : []) g.appendChild(cdEl(a, a.year, null, true));
       box.appendChild(g); s.appendChild(box);
     }
     wrapAll.appendChild(s);
@@ -209,6 +230,97 @@ async function loadLibrary() {
   if (!albums.length) $("main").innerHTML = `<div class="loading" id="loadmsg">Loading your albums…</div>`;
   const fresh = await fetchLibrary((n, total) => { const m = $("loadmsg"); if (m) m.textContent = `Loading your albums… ${n} of ${total}`; });
   albums = fresh; store.set("shelf-library", fresh); render();
+}
+
+// ---------- More by this artist, saving and removing ----------
+const expanded = new Set(), loadingMore = new Set(), moreCache = {};
+const artistById = id => { const a = albums.find(x => x.artistId === id); return a && { id, name: a.artist }; };
+// "Album (Remastered)", "Album [Deluxe]" and "Album - 2011 Remaster" count as the same album
+const normTitle = t => t.toLowerCase().replace(/\s*[([].*?[)\]]\s*/g, " ").replace(/\s+-\s+.*$/, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+function otherAlbums(ar) {
+  const mine = albums.filter(a => a.artistId === ar.id);
+  const ids = new Set(mine.map(a => a.id)), titles = new Set(mine.map(a => normTitle(a.title)));
+  return (moreCache[ar.id] || []).filter(a => !ids.has(a.id) && !titles.has(normTitle(a.title)));
+}
+
+async function toggleMore(ar) {
+  if (expanded.has(ar.id)) { expanded.delete(ar.id); render(); return; }
+  if (!moreCache[ar.id]) {
+    loadingMore.add(ar.id); render();
+    try {
+      const list = [];
+      let url = `/artists/${encodeURIComponent(ar.id)}/albums?include_groups=album&limit=50&market=from_token`;
+      while (url && list.length < 200) {
+        const r = await api(url);
+        if (!r.ok) throw new Error("Couldn't load more albums (" + r.status + ")");
+        const page = await r.json();
+        page.items.forEach(a => list.push({ ...albumFromApi(a), artist: ar.name, artistId: ar.id }));
+        url = page.next ? page.next.replace("https://api.spotify.com/v1", "") : null;
+      }
+      // one entry per album title, keeping the original release
+      const seen = new Map();
+      list.sort((p, q) => p.date.localeCompare(q.date)).forEach(a => { const k = normTitle(a.title); if (!seen.has(k)) seen.set(k, a); });
+      moreCache[ar.id] = [...seen.values()];
+    } catch (e) { toast(e.message); loadingMore.delete(ar.id); render(); return; }
+    loadingMore.delete(ar.id);
+  }
+  if (!otherAlbums(ar).length) { toast(`You already have every ${ar.name} album`); render(); return; }
+  expanded.add(ar.id); render();
+}
+
+const canModify = () => (store.get("shelf-token")?.scope || "").includes("user-library-modify");
+function needPermission() {
+  toast("Shelf needs your OK to change your Spotify library.", "Reconnect", login, 10000);
+}
+
+async function libraryCall(method, ids) {
+  for (let i = 0; i < ids.length; i += 20) {
+    const r = await api("/me/albums?ids=" + ids.slice(i, i + 20).join(","), { method });
+    if (r.status === 403 || r.status === 401) { needPermission(); return false; }
+    if (!r.ok) { toast("Spotify didn't accept that (" + r.status + "). Try again."); return false; }
+  }
+  return true;
+}
+
+async function saveAlbum(a) {
+  if (!canModify()) return needPermission();
+  if (!await libraryCall("PUT", [a.id])) return;
+  albums.push({ ...a }); store.set("shelf-library", albums); render();
+  toast(`Saved “${a.title}” to your library`, "Undo", () => removeAlbums([a], `“${a.title}”`, false));
+}
+
+async function removeAlbums(list, label, offerUndo = true) {
+  if (!canModify()) return needPermission();
+  if (!await libraryCall("DELETE", list.map(a => a.id))) return;
+  const gone = new Set(list.map(a => a.id));
+  albums = albums.filter(a => !gone.has(a.id)); store.set("shelf-library", albums); render();
+  if (offerUndo) toast(`Removed ${label} from your library`, "Undo", async () => {
+    if (!await libraryCall("PUT", list.map(a => a.id))) return;
+    albums.push(...list); store.set("shelf-library", albums); render(); toast("Put back");
+  });
+  else toast(`Removed ${label}`);
+}
+
+// Artist-name links (More / Remove all) work the same in both layouts
+$("main").addEventListener("click", e => {
+  const btn = e.target.closest("[data-act]"); if (!btn) return;
+  const ar = artistById(btn.dataset.artist); if (!ar) return;
+  if (btn.dataset.act === "more") toggleMore(ar);
+  if (btn.dataset.act === "remove-artist") {
+    const list = albums.filter(a => a.artistId === ar.id);
+    removeAlbums(list, list.length === 1 ? `${ar.name}’s album` : `all ${list.length} ${ar.name} albums`);
+  }
+});
+
+// Small message at the bottom with an optional action (e.g. Undo)
+let toastTimer;
+function toast(msg, actionLabel, action, ms = 6000) {
+  let t = $("toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+  t.innerHTML = `<span>${esc(msg)}</span>` + (actionLabel ? `<button type="button">${esc(actionLabel)}</button>` : "");
+  if (actionLabel) t.querySelector("button").onclick = () => { t.hidden = true; action(); };
+  t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, ms);
 }
 
 // ---------- Playback (Spotify Web Playback SDK; needs Premium) ----------

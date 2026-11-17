@@ -137,13 +137,40 @@ section, .row, .cd { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
 .opt small { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
 .srow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; }
 
+/* artist name with quiet hover links: More (other albums) and Remove all */
+.an-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.an-acts { flex: none; display: inline-flex; gap: 2px; margin-left: 8px; opacity: 0; transition: opacity .15s; vertical-align: middle; }
+.row h2:hover .an-acts, .an:hover .an-acts, .an-acts:focus-within, .an-acts:has(.on) { opacity: 1; }
+@media (hover: none) { .an-acts { opacity: .8; } }
+.act { font: 500 11px var(--sans); letter-spacing: 0; color: var(--muted); background: none; border: 0; padding: 2px 5px; border-radius: 4px; cursor: pointer; }
+.act:hover, .act:focus-visible, .act.on { color: var(--fg); background: var(--line); outline: none; }
+.act[data-act="remove-artist"]:hover { color: var(--accent); }
+/* remove (top right) on hover */
+.ov.rm { top: 8px; bottom: auto; right: 8px; width: 24px; height: 24px; }
+.ov.rm svg { width: 11px; height: 11px; }
+.ov.rm:hover { color: var(--accent); }
+/* other albums by the artist that you haven't saved: faded until you hover */
+.cd.ghost .cover { background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+.cd.ghost .cover img { opacity: .35; filter: grayscale(.8); transition: opacity .15s, filter .15s; }
+.cd.ghost .art:hover .cover img, .cd.ghost .cover:focus-visible img { opacity: 1; filter: none; }
+.cd.ghost .t, .cd.ghost .y { opacity: .55; }
+.ov.add { right: 10px; opacity: .9; }
+.ov.add svg { width: 12px; height: 12px; }
+.ov.add:hover { color: var(--accent); }
+/* toast */
+.toast { position: fixed; z-index: 10; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 32px);
+  background: var(--fg); color: var(--bg); font-size: 13px; padding: 10px 14px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+.toast button { font: 600 13px var(--sans); color: var(--bg); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.row h2 { display: flex; align-items: baseline; }
+
 /* "Side by side" layout: every album sits on one even grid in artist order; an artist's albums wrap
    onto the next line like any others, and the artist's name sits above their first album */
 body.shelf #artists { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--d-cover), 1fr)); gap: var(--d-gap-y) var(--d-gap-x); margin-top: var(--d-row-gap); }
 body.shelf #artists section, body.shelf #artists .row, body.shelf #artists .grid { display: contents; }
 body.shelf #artists .row h2 { display: none; }
 .an { display: none; }
-body.shelf #artists .an { display: block; height: 1.25em; font-family: var(--d-h-font); font-size: var(--d-h-size); font-weight: var(--d-h-weight); letter-spacing: var(--d-h-ls); line-height: 1.25; margin-bottom: var(--d-h-gap); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.shelf #artists .an { display: flex; align-items: baseline; height: 1.25em; font-family: var(--d-h-font); font-size: var(--d-h-size); font-weight: var(--d-h-weight); letter-spacing: var(--d-h-ls); line-height: 1.25; margin-bottom: var(--d-h-gap); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 480px) { body.shelf #artists { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; } }
 .linkbtn { font: 12px var(--sans); color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; }
 .linkbtn:hover, .linkbtn:focus-visible { color: var(--fg); text-decoration: underline; outline: none; }
