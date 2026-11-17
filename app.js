@@ -274,10 +274,14 @@ function needPermission() {
   toast("Shelf needs your OK to change your Spotify library.", "Reconnect", login, 10000);
 }
 
+// Saves (PUT) or removes (DELETE) albums in your Spotify library.
+// Uses Spotify's general /me/library endpoint: the older /me/albums write endpoint now returns 403 for apps like this.
 async function libraryCall(method, ids) {
   for (let i = 0; i < ids.length; i += 20) {
-    const r = await api("/me/albums?ids=" + ids.slice(i, i + 20).join(","), { method });
-    if (r.status === 403 || r.status === 401) { needPermission(); return false; }
+    const uris = ids.slice(i, i + 20).map(id => "spotify:album:" + id).join(",");
+    const r = await api("/me/library?uris=" + encodeURIComponent(uris), { method });
+    if (r.status === 401) { needPermission(); return false; }
+    if (r.status === 403) { toast(canModify() ? "Spotify refused that change (403)." : "Shelf needs your OK to change your Spotify library.", canModify() ? null : "Reconnect", login, 10000); return false; }
     if (!r.ok) { toast("Spotify didn't accept that (" + r.status + "). Try again."); return false; }
   }
   return true;
