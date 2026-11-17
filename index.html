@@ -138,10 +138,11 @@ section, .row, .cd { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
 .srow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; }
 
 /* artist name with quiet hover links: More (other albums) and Remove all */
-.an-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.an-acts { flex: none; display: inline-flex; gap: 2px; margin-left: 8px; opacity: 0; transition: opacity .15s; vertical-align: middle; }
-.row h2:hover .an-acts, .an:hover .an-acts, .an-acts:focus-within, .an-acts:has(.on) { opacity: 1; }
-@media (hover: none) { .an-acts { opacity: .8; } }
+.an-name { white-space: nowrap; }
+/* the links take no space until shown, so they never squeeze the name; they float just after it */
+.an-acts { display: inline-flex; gap: 2px; margin-left: 6px; padding-right: 4px; opacity: 0; pointer-events: none; transition: opacity .15s; vertical-align: middle; background: var(--bg); position: relative; z-index: 2; }
+.row h2:hover .an-acts, .an:hover .an-acts, .an-acts:focus-within, .an-acts:has(.on) { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .an-acts { opacity: .8; pointer-events: auto; } }
 .act { font: 500 11px var(--sans); letter-spacing: 0; color: var(--muted); background: none; border: 0; padding: 2px 5px; border-radius: 4px; cursor: pointer; }
 .act:hover, .act:focus-visible, .act.on { color: var(--fg); background: var(--line); outline: none; }
 .act[data-act="remove-artist"]:hover { color: var(--accent); }
@@ -170,7 +171,7 @@ body.shelf #artists { display: grid; grid-template-columns: repeat(auto-fill, mi
 body.shelf #artists section, body.shelf #artists .row, body.shelf #artists .grid { display: contents; }
 body.shelf #artists .row h2 { display: none; }
 .an { display: none; }
-body.shelf #artists .an { display: flex; align-items: baseline; height: 1.25em; font-family: var(--d-h-font); font-size: var(--d-h-size); font-weight: var(--d-h-weight); letter-spacing: var(--d-h-ls); line-height: 1.25; margin-bottom: var(--d-h-gap); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.shelf #artists .an { display: block; position: relative; height: 1.25em; font-family: var(--d-h-font); font-size: var(--d-h-size); font-weight: var(--d-h-weight); letter-spacing: var(--d-h-ls); line-height: 1.25; margin-bottom: var(--d-h-gap); white-space: nowrap; overflow: visible; }
 @media (max-width: 480px) { body.shelf #artists { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; } }
 .linkbtn { font: 12px var(--sans); color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; }
 .linkbtn:hover, .linkbtn:focus-visible { color: var(--fg); text-decoration: underline; outline: none; }
