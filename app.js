@@ -471,6 +471,8 @@ function setDrawer(open) {
 }
 $("barIn").onclick = e => { if (e.target.closest(".ctrls")) return; setDrawer(!$("player").classList.contains("open")); };
 document.addEventListener("keydown", e => { if (e.key === "Escape" && $("player").classList.contains("open")) setDrawer(false); });
+// Clicking anywhere outside the player closes the drawer
+document.addEventListener("click", e => { if ($("player").classList.contains("open") && !e.target.closest("#player")) setDrawer(false); });
 $("pp").onclick = () => player?.togglePlay();
 $("logout").onclick = logout;
 $("refresh").onclick = async () => { $("refresh").textContent = "Refreshing…"; try { await loadLibrary(); } finally { $("refresh").textContent = "Refresh"; } };
