@@ -1,0 +1,443 @@
+<title>CD Shelf</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=Lato:wght@400;700;900&family=Manrope:wght@400;500;600;700;800&family=Montserrat:wght@400;500;600;700;800&family=Open+Sans:wght@400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&family=Roboto:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=Work+Sans:wght@400;500;600;700;800&display=swap">
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: quiet grey canvas, square covers in an even grid, artist rows A–Z, a frosted player bar at the bottom */
+:root {
+  --bg: #ececec;
+  --fg: #1d1d1f;
+  --muted: #86868b;
+  --line: #dcdcde;
+  --bar: #ffffff;
+  --chip: rgba(255,255,255,.92);
+  --accent: #fa2d48;
+  --panel: #fbfbfc;
+  --sans: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1e1e20; --fg: #f5f5f7; --muted: #98989d; --line: #333336;
+    --bar: #242426; --chip: rgba(40,40,42,.92); --accent: #ff4d63; --panel: #252527; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1e1e20; --fg: #f5f5f7; --muted: #98989d; --line: #333336;
+  --bar: #242426; --chip: rgba(40,40,42,.92); --accent: #ff4d63; --panel: #252527; color-scheme: dark;
+}
+/* Adjustable design values (driven by the Design drawer) */
+:root {
+  --d-cover: 170px; --d-gap-x: 16px; --d-gap-y: 30px; --d-radius: 5px; --d-margin: 30px;
+  --d-h-size: 20px; --d-h-weight: 700; --d-h-gap: 24px; --d-row-gap: 60px;
+  --d-t-size: 11px; --d-t-weight: 600; --d-t-gap: 5px; --d-y-size: 10px;
+  --d-h-font: var(--sans); --d-t-font: var(--sans); --d-h-ls: -0.008em; --d-t-ls: -0.02em; --d-y-ls: -0.02em;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--sans); -webkit-font-smoothing: antialiased;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 110px;
+}
+.wrap { max-width: 1320px; margin: 0 auto; padding-inline: min(var(--d-margin), 4vw); }
+
+/* top bar: A–Z jump links on the left, collection info on the right, one line */
+.topbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg);
+  display: flex; align-items: center; justify-content: space-between; gap: 6px 16px; flex-wrap: wrap;
+  padding-block: 24px 10px;
+  /* paint the bar's background out to both screen edges so scrolling covers never peek past it */
+  box-shadow: 0 0 0 100vmax var(--bg); clip-path: inset(0 -100vmax);
+}
+.sub { font-size: 12px; color: var(--muted); }
+nav.az { display: flex; flex-wrap: wrap; gap: 0 2px; margin-left: -4px; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+nav.az a, nav.az span { font-size: 12px; font-weight: 600; min-width: 22px; height: 24px; display: grid; place-items: center; text-decoration: none; color: var(--accent); border-radius: 5px; padding: 0 4px; }
+nav.az span { color: var(--line); }
+nav.az a:hover, nav.az a:focus-visible { background: var(--line); outline: none; }
+
+/* jump targets stop just below the sticky top bar (height measured in script) */
+section, .row { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
+.row { margin-top: var(--d-row-gap); }
+#favourites { margin-top: 26px; }
+.row h2 { font-family: var(--d-h-font); font-size: var(--d-h-size); font-weight: var(--d-h-weight); letter-spacing: var(--d-h-ls); line-height: 1.25; margin: 0 0 var(--d-h-gap); }
+.empty { font-size: 13px; color: var(--muted); }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--d-cover), 1fr)); gap: var(--d-gap-y) var(--d-gap-x); }
+.cd { min-width: 0; }
+.art { position: relative; aspect-ratio: 1; max-width: 100%; }
+.cover { display: block; width: 100%; height: 100%; padding: 0; border: 0; cursor: pointer; border-radius: var(--d-radius); overflow: hidden; background: var(--line);
+  box-shadow: 0 0 0 0.5px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06); }
+.cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: filter .15s; }
+.art:hover .cover img, .cover:focus-visible img { filter: brightness(.86); }
+.cover:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ov { position: absolute; bottom: 10px; width: 30px; height: 30px; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--chip); color: var(--fg); display: grid; place-items: center; padding: 0;
+  opacity: 0; transition: opacity .15s; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+.ov svg { width: 13px; height: 13px; fill: currentColor; }
+.ov.play { left: 10px; }
+.ov.star { right: 10px; }
+.ov.star[aria-pressed="true"] { color: var(--accent); opacity: 1; }
+.art:hover .ov, .ov:focus-visible { opacity: 1; }
+.ov:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cd.playing .cover { box-shadow: 0 0 0 2px var(--accent); }
+.t { font-family: var(--d-t-font); letter-spacing: var(--d-t-ls); font-size: var(--d-t-size); font-weight: var(--d-t-weight); margin-top: var(--d-t-gap); line-height: 1.38; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.y { font-family: var(--d-t-font); letter-spacing: var(--d-y-ls); font-size: var(--d-y-size); font-weight: 400; color: var(--muted); line-height: 1.38; font-variant-numeric: tabular-nums; }
+
+.player {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+  background: var(--bar); 
+  border-top: 1px solid var(--line);
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+/* same width and side margin as the page, so the thumbnail lines up with the covers' left edge */
+.player .in { max-width: 1320px; margin: 0 auto; display: flex; align-items: center; gap: 12px; padding-inline: min(var(--d-margin), 4vw); }
+.thumb { width: 44px; height: 44px; border-radius: 4px; flex: none; background: var(--line); object-fit: cover; }
+.np { min-width: 0; flex: 1; }
+.np .a { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np .s { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.prog { height: 3px; border-radius: 2px; background: var(--line); margin-top: 6px; max-width: 360px; overflow: hidden; }
+.prog div { height: 100%; width: 0; background: var(--muted); transition: width .25s linear; }
+.ctrls { display: flex; align-items: center; gap: 4px; flex: none; }
+.cbtn { width: 38px; height: 38px; border-radius: 50%; border: 0; background: none; color: var(--fg); cursor: pointer; display: grid; place-items: center; padding: 0; }
+.cbtn svg { width: 20px; height: 20px; fill: currentColor; }
+.cbtn.main svg { width: 26px; height: 26px; }
+.cbtn:hover { background: var(--line); }
+.cbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cbtn:disabled { opacity: .3; cursor: default; background: none; }
+@media (max-width: 480px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; } }
+/* Design drawer */
+.dtab { position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 8; border: 0; cursor: pointer;
+  background: var(--fg); color: var(--bg); font: 600 12px var(--sans); letter-spacing: .04em;
+  writing-mode: vertical-rl; padding: 14px 8px; border-radius: 8px 0 0 8px; margin-right: env(safe-area-inset-right, 0px); }
+.dtab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 9; width: min(320px, 92vw);
+  background: var(--panel); border-left: 1px solid var(--line); box-shadow: -10px 0 30px rgba(0,0,0,.12);
+  transform: translateX(105%); transition: transform .25s ease; display: flex; flex-direction: column;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) calc(18px + env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) 18px; }
+.drawer.open { transform: none; }
+.drawer .hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.drawer .hd h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.drawer .x { border: 0; background: none; color: var(--fg); font-size: 22px; line-height: 1; cursor: pointer; width: 32px; height: 32px; border-radius: 50%; }
+.drawer .x:hover { background: var(--line); }
+.dbody { overflow-y: auto; flex: 1; margin-inline: -4px; padding-inline: 4px; }
+.dgroup { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; }
+.ctl { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; padding: 6px 0; }
+.ctl label { font-size: 13px; }
+.ctl output { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ctl input[type=range] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.ctl select { font: 13px var(--sans); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; max-width: 160px; }
+.ctl input[type=color] { width: 44px; height: 28px; padding: 0 2px; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+.swatches { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
+.swatches button { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(0,0,0,.15); cursor: pointer; padding: 0; }
+.swatches button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dfoot { display: flex; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); margin-top: 8px; }
+.dfoot button { flex: 1; font: 600 13px var(--sans); padding: 9px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line); background: none; color: var(--fg); }
+.dfoot button.pri { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.dfoot button:focus-visible, .dtab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dnote { font-size: 12px; color: var(--muted); min-height: 16px; margin-top: 8px; }
+.dcode { width: 100%; font: 11px ui-monospace, Menlo, monospace; margin-top: 6px; height: 90px; resize: none; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <div class="topbar">
+    <nav class="az" id="az" aria-label="Jump to letter"></nav>
+    <div class="sub" id="summary"></div>
+  </div>
+  <main id="main"></main>
+</div>
+
+<div class="player" role="region" aria-label="Now playing">
+  <div class="in">
+    <img class="thumb" id="thumb" alt="" hidden>
+    <div class="np">
+      <div class="a" id="npt">Not playing</div>
+      <div class="s" id="npa">Choose an album to start</div>
+      <div class="prog" id="prog" hidden aria-hidden="true"><div id="bar"></div></div>
+    </div>
+    <div class="ctrls" id="ctrls" hidden>
+      <button class="cbtn" id="prev" type="button" aria-label="Previous track"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+      <button class="cbtn main" id="pp" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" id="ppi"></svg></button>
+      <button class="cbtn" id="next" type="button" aria-label="Next track"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<button class="dtab" id="dtab" type="button" aria-expanded="false" aria-controls="drawer">Design</button>
+<aside class="drawer" id="drawer" aria-label="Design controls">
+  <div class="hd"><h3>Design</h3><button class="x" id="dclose" type="button" aria-label="Close design controls">&times;</button></div>
+  <div class="dbody" id="dbody"></div>
+  <div class="dfoot">
+    <button type="button" id="dreset">Reset</button>
+    <button type="button" class="pri" id="dcopy">Copy settings</button>
+  </div>
+  <div class="dnote" id="dnote" aria-live="polite"></div>
+  <textarea class="dcode" id="dcode" readonly hidden aria-label="Current settings"></textarea>
+</aside>
+
+<script>
+// Fictional sample collection (the real version reads your saved albums from Spotify)
+const LIB = [
+  ["Arden Vale", [["Paper Lanterns", 2009], ["Low Tide Hymns", 2012], ["North of Nowhere", 2017]]],
+  ["Atlas Kiosk", [["Simulation", 2014], ["Signal Loss", 2019]]],
+  ["Bloomfield Static", [["Handle With Care", 2006], ["Glasshouse", 2010]]],
+  ["Cass Morrow", [["Roulette", 2011], ["Red Renegade", 2015], ["Finality", 2021]]],
+  ["The Dovetails", [["In Case of Emergency", 2003]]],
+  ["Eli Marchetti", [["Spectrum", 2016], ["Night Bus Home", 2020]]],
+  ["Fennel & Fox", [["Rose Tinted", 2008], ["Sunday Papers", 2013]]],
+  ["Gully Grace", [["Zebra", 2018]]],
+  ["Harbour Lights", [["Stinger", 2001], ["Tumbling", 2004], ["Breakwater", 2009]]],
+  ["Juno Park", [["Static Bloom", 2022]]],
+  ["Kestrel Union", [["Concrete Gardens", 2007], ["Overpass", 2011]]],
+  ["Lowland Choir", [["Hymns for Cars", 2015]]],
+  ["Moth Radio", [["Tape Hiss", 1998], ["Analogue Hearts", 2002], ["Long Wave", 2006]]],
+  ["Nadia Okafor", [["Copper", 2019], ["Saltwater", 2023]]],
+  ["The Pinewoods", [["Campfire Maths", 2012]]],
+  ["Quiet Coast", [["Seafront in Winter", 2010]]],
+  ["Ruby Halloran", [["Neon Sermon", 2016], ["Afterglow", 2024]]],
+  ["Stereo Saints", [["Loud Hours", 1999], ["Second Sight", 2003]]],
+  ["Tallis Grey", [["Vapour Trails", 2014]]],
+  ["Velvet Index", [["Catalogue", 2008], ["Appendix", 2012]]],
+  ["Wren & Whistle", [["Hedgerow", 2017]]],
+];
+
+const PALETTES = [
+  ["#c9b458","#1b1b1b"],["#8c2f39","#f1ece4"],["#1d3557","#a8dadc"],["#d9a5b3","#ffffff"],
+  ["#141414","#d8d8d8"],["#2f6f68","#e9c46a"],["#e9e7e1","#2b2b2b"],["#3d3356","#e7c8a0"],
+  ["#b5562f","#f6eadb"],["#1f4d43","#d7e6cf"],["#14213d","#d9a441"],["#c8d0cc","#3a3a3a"],
+];
+function hash(s){let h=2166136261;for(const c of s)h=Math.imul(h^c.charCodeAt(0),16777619);return h>>>0;}
+function rng(seed){return()=>((seed=Math.imul(seed^seed>>>15,seed|1)^(seed+Math.imul(seed^seed>>>7,seed|61)),((seed^seed>>>14)>>>0)/4294967296));}
+
+// Placeholder artwork for the sample albums; real covers come from Spotify
+function cover(title, artist){
+  const S=400, c=document.createElement("canvas"); c.width=c.height=S; const g=c.getContext("2d");
+  const h=hash(title+artist), r=rng(h), [bg,fg]=PALETTES[h%PALETTES.length], style=h%6;
+  g.fillStyle=bg; g.fillRect(0,0,S,S); g.fillStyle=fg; g.strokeStyle=fg;
+  if(style===0){ g.lineWidth=10; for(let i=1;i<12;i++){g.beginPath();g.arc(S/2,S/2,i*18,0,7);g.stroke();} }
+  else if(style===1){ g.lineWidth=2; for(let i=0;i<48;i++){g.beginPath();g.moveTo(0,i*9);g.bezierCurveTo(S*.3,i*9-50,S*.7,i*9+50,S,i*9);g.stroke();} }
+  else if(style===2){ for(let i=0;i<7;i++){const x=r()*S,y=r()*S,gr=g.createRadialGradient(x,y,0,x,y,S*.6);gr.addColorStop(0,`hsla(${r()*360},55%,55%,.75)`);gr.addColorStop(1,"transparent");g.fillStyle=gr;g.fillRect(0,0,S,S);} g.fillStyle=fg; }
+  else if(style===3){ const n=5+Math.floor(r()*4), s=S/n; g.globalAlpha=.85; for(let i=0;i<n;i++)for(let j=0;j<n;j++) if(r()>.55) g.fillRect(i*s+5,j*s+5,s-10,s-10); g.globalAlpha=1; }
+  else if(style===4){ g.beginPath();g.arc(S*.5,S*.55,S*.3,0,7);g.fill(); }
+  else { g.globalAlpha=.9; for(let i=0;i<14;i++){g.fillRect(r()*S, r()*S, 4+r()*90, 2+r()*6);} g.globalAlpha=1; }
+  g.font="600 15px -apple-system, Helvetica, Arial"; g.fillStyle=style===2?"#fff":fg;
+  g.fillText(artist.toLowerCase(), 22, 36); g.globalAlpha=.7; g.fillText(title.toLowerCase(), 22, 56); g.globalAlpha=1;
+  return c.toDataURL("image/jpeg",.88);
+}
+
+const sortKey = a => a.replace(/^the\s+/i,"");   // "The Dovetails" files under D, like a shop
+const artists = LIB.map(([name, albums]) => ({ name, albums: [...albums].sort((a,b)=>a[1]-b[1]) }))
+                   .sort((a,b)=>sortKey(a.name).localeCompare(sortKey(b.name)));
+const albums = artists.flatMap(a => a.albums.map(([t,y]) => ({ id: a.name+"|"+t, artist:a.name, title:t, year:y })));
+
+let favs = new Set();
+try { favs = new Set(JSON.parse(localStorage.getItem("shelf-favs") || "[]")); } catch {}
+if (!favs.size) favs = new Set(["Cass Morrow|Roulette","Eli Marchetti|Spectrum","Gully Grace|Zebra","Bloomfield Static|Handle With Care"]);
+const saveFavs = () => { try { localStorage.setItem("shelf-favs", JSON.stringify([...favs])); } catch {} };
+
+const covers = {};
+const getCover = a => covers[a.id] ??= cover(a.title, a.artist);
+let playing = null, paused = false;
+
+const ICON_PLAY = '<path d="M7 4v16l13-8z"/>', ICON_PAUSE = '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>';
+const STAR = '<svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6L2.5 9.4l6.6-.8z"/></svg>';
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+
+function cdEl(a, sub){
+  const d=document.createElement("div"); d.className="cd"+(playing===a.id?" playing":""); d.dataset.id=a.id;
+  const fav=favs.has(a.id);
+  d.innerHTML=`<div class="art">
+      <button class="cover" type="button" aria-label="Play ${esc(a.title)} by ${esc(a.artist)}"><img alt="" src="${getCover(a)}"></button>
+      <button class="ov play" type="button" tabindex="-1" aria-hidden="true"><svg viewBox="0 0 24 24">${ICON_PLAY}</svg></button>
+      <button class="ov star" type="button" aria-pressed="${fav}" aria-label="${fav?"Remove from":"Add to"} favourites">${STAR}</button>
+    </div>
+    <div class="t">${esc(a.title)}</div><div class="y">${esc(sub)}</div>`;
+  d.querySelector(".cover").onclick=()=>play(a);
+  d.querySelector(".ov.play").onclick=()=>play(a);
+  d.querySelector(".star").onclick=()=>{ fav?favs.delete(a.id):favs.add(a.id); saveFavs(); render(); };
+  return d;
+}
+
+function render(){
+  const main=document.getElementById("main"); main.innerHTML="";
+  // Favourites
+  const fs=document.createElement("section"); fs.id="favourites"; fs.className="row";
+  const favList = albums.filter(a=>favs.has(a.id));
+  fs.innerHTML=`<h2>Favourites</h2>`;
+  if(!favList.length) fs.insertAdjacentHTML("beforeend",`<div class="empty">Hover over any album and tap the star to keep it here.</div>`);
+  else { const r=document.createElement("div"); r.className="grid"; favList.forEach(a=>r.appendChild(cdEl(a, a.artist))); fs.appendChild(r); }
+  main.appendChild(fs);
+  // A–Z by artist, albums oldest first
+  const groups={};
+  artists.forEach(ar=>{ const L=sortKey(ar.name)[0].toUpperCase(); (groups[L]??=[]).push(ar); });
+  Object.keys(groups).sort().forEach(L=>{
+    const s=document.createElement("section"); s.id="l-"+L;
+    // no visible letter dividers; the A–Z bar jumps to each letter's first artist
+    groups[L].forEach(ar=>{
+      const box=document.createElement("div"); box.className="row"; box.innerHTML=`<h2>${esc(ar.name)}</h2>`;
+      const r=document.createElement("div"); r.className="grid";
+      ar.albums.forEach(([t])=>{ const a=albums.find(x=>x.id===ar.name+"|"+t); r.appendChild(cdEl(a, String(a.year))); });
+      box.appendChild(r); s.appendChild(box);
+    });
+    main.appendChild(s);
+  });
+  const az=document.getElementById("az");
+  az.innerHTML=`<a href="#favourites">Favourites</a>`+
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map(L=>groups[L]?`<a href="#l-${L}">${L}</a>`:`<span aria-hidden="true">${L}</span>`).join("");
+  document.getElementById("summary").textContent=`${albums.length} albums · ${artists.length} artists · sample data`;
+}
+
+// Made-up track lists for the sample albums
+const WORDS = ["Velvet","Harbour","Static","Midnight","Paper","Copper","Neon","Quiet","Satellite","Summer","Glass","Orchard","Signal","Ferris","Lantern","Motorway","Echo","Saltwater","Golden","Window","Arcade","Northern","Parade","Ribbon","Thunder","Postcard","Afterglow","Silver","Hollow","Radio"];
+function tracksFor(a){
+  const r=rng(hash(a.id+"tracks")), n=8+Math.floor(r()*5), out=[];
+  for(let i=0;i<n;i++){ const w1=WORDS[Math.floor(r()*WORDS.length)], w2=WORDS[Math.floor(r()*WORDS.length)];
+    out.push({ name: r()>.5 ? `${w1} ${w2}` : w1, len: 150+Math.floor(r()*150) }); }
+  return out;
+}
+const fmt = s => `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+let current=null, tracks=[], ti=0, pos=0;
+
+function showTrack(){
+  const t=tracks[ti];
+  document.getElementById("npt").textContent=t.name;
+  document.getElementById("npa").textContent=`${current.artist} — ${current.title} · ${ti+1}/${tracks.length} · ${fmt(pos)} / ${fmt(t.len)}`;
+  document.getElementById("bar").style.width=`${(pos/t.len)*100}%`;
+  document.getElementById("next").disabled = ti===tracks.length-1;
+  document.getElementById("ppi").innerHTML = paused?ICON_PLAY:ICON_PAUSE;
+  document.getElementById("pp").setAttribute("aria-label", paused?"Play":"Pause");
+}
+function play(a){
+  playing=a.id; current=a; tracks=tracksFor(a); ti=0; pos=0; paused=false;
+  const th=document.getElementById("thumb"); th.src=getCover(a); th.hidden=false;
+  document.getElementById("ctrls").hidden=false; document.getElementById("prog").hidden=false;
+  document.querySelectorAll(".cd").forEach(el=>el.classList.toggle("playing", el.dataset.id===a.id));
+  showTrack();
+}
+// Previous: restart the track if more than 3 seconds in, otherwise go back one
+document.getElementById("prev").onclick=()=>{ if(pos>3||ti===0) pos=0; else { ti--; pos=0; } showTrack(); };
+document.getElementById("next").onclick=()=>{ if(ti<tracks.length-1){ ti++; pos=0; showTrack(); } };
+document.getElementById("pp").onclick=()=>{ paused=!paused; showTrack(); };
+// Simulated playback clock, sped up 10x so the mock-up visibly moves
+setInterval(()=>{
+  if(!current||paused) return;
+  pos+=10;
+  if(pos>=tracks[ti].len){ if(ti<tracks.length-1){ ti++; pos=0; } else { pos=tracks[ti].len; paused=true; } }
+  showTrack();
+},1000);
+
+// ---- Design drawer: each control drives one CSS variable ----
+// Fonts on offer (System = the Mac/iPhone system font)
+const FONTS = {
+  "System": "var(--sans)",
+  "Inter": "'Inter', var(--sans)",
+  "DM Sans": "'DM Sans', var(--sans)",
+  "Manrope": "'Manrope', var(--sans)",
+  "Work Sans": "'Work Sans', var(--sans)",
+  "Space Grotesk": "'Space Grotesk', var(--sans)",
+  "IBM Plex Sans": "'IBM Plex Sans', var(--sans)",
+  "Montserrat": "'Montserrat', var(--sans)",
+  "Poppins": "'Poppins', var(--sans)",
+  "Roboto": "'Roboto', var(--sans)",
+  "Open Sans": "'Open Sans', var(--sans)",
+  "Lato": "'Lato', var(--sans)",
+  "Playfair Display": "'Playfair Display', Georgia, serif",
+};
+const CONTROLS = [
+  ["Covers"],
+  ["d-cover",   "Cover size",              120, 320, 5,   170, "px"],
+  ["d-gap-x",   "Space between covers",      8,  60, 1,    16, "px"],
+  ["d-gap-y",   "Space between cover rows", 10,  80, 1,    30, "px"],
+  ["d-radius",  "Corner rounding",           0,  20, 1,     5, "px"],
+  ["Artist names"],
+  ["d-h-font",  "Font", "font"],
+  ["d-h-size",  "Size",                     12,  32, 1,    20, "px"],
+  ["d-h-weight","Weight",                  400, 900, 100, 700, ""],
+  ["d-h-ls",    "Letter spacing",        -0.06, 0.2, 0.005, -0.008, "em"],
+  ["d-h-gap",   "Space above covers",        4,  48, 1,    24, "px"],
+  ["d-row-gap", "Space between artists",    16, 120, 2,    60, "px"],
+  ["Album titles"],
+  ["d-t-font",  "Font", "font"],
+  ["d-t-size",  "Title size",               10,  20, 1,    11, "px"],
+  ["d-t-weight","Title weight",            400, 900, 100, 600, ""],
+  ["d-t-ls",    "Title letter spacing",  -0.06, 0.2, 0.005, -0.02, "em"],
+  ["d-t-gap",   "Space below cover",         2,  24, 1,     5, "px"],
+  ["d-y-size",  "Year size",                 9,  18, 1,    10, "px"],
+  ["d-y-ls",    "Year letter spacing",   -0.06, 0.2, 0.005, -0.02, "em"],
+  ["Page"],
+  ["d-margin",  "Side margin",               0,  80, 2,    30, "px"],
+];
+const isFont = c => c[2]==="font";
+const isSlider = c => c.length>3;
+const BG_SWATCHES = ["#ececec","#f5f5f7","#ffffff","#e8e4dc","#dfe5e8","#1e1e20","#111111"];
+let design = {};
+try { design = JSON.parse(localStorage.getItem("shelf-design") || "{}"); } catch {}
+const root = document.documentElement;
+function applyDesign(){
+  CONTROLS.forEach(c=>{
+    if(isFont(c)) root.style.setProperty("--"+c[0], FONTS[design[c[0]]] || FONTS.System);
+    else if(isSlider(c)){ const [k,,,,,def,u]=c; root.style.setProperty("--"+k, (design[k]??def)+u); }
+  });
+  // Background colour: overrides the theme's background; dark choices switch the text to light
+  if(design.bg){ root.style.setProperty("--bg", design.bg); const dark=lum(design.bg)<.4;
+    for(const [k,l,d] of [["--fg","#1d1d1f","#f5f5f7"],["--muted","#86868b","#98989d"],["--line","#d6d6d8","#38383b"],["--panel","#fbfbfc","#252527"],["--bar","#ffffff","#242426"]]) root.style.setProperty(k, dark?d:l);
+    root.style.colorScheme = dark?"dark":"light"; }
+  else { ["--bg","--fg","--muted","--line","--panel","--bar"].forEach(k=>root.style.removeProperty(k)); root.style.colorScheme=""; }
+  try { localStorage.setItem("shelf-design", JSON.stringify(design)); } catch {}
+}
+function lum(hex){const n=parseInt(hex.slice(1),16);return (0.299*(n>>16)+0.587*(n>>8&255)+0.114*(n&255))/255;}
+function buildDrawer(){
+  const body=document.getElementById("dbody"); body.innerHTML="";
+  // Background colour
+  body.insertAdjacentHTML("beforeend",`<div class="dgroup">Background</div>`);
+  const bgRow=document.createElement("div"); bgRow.className="ctl";
+  const cur=design.bg || getComputedStyle(root).getPropertyValue("--bg").trim();
+  bgRow.innerHTML=`<label for="c-bg">Background colour</label><input type="color" id="c-bg" value="${/^#[0-9a-f]{6}$/i.test(cur)?cur:"#ececec"}">
+    <div class="swatches">${BG_SWATCHES.map(c=>`<button type="button" style="background:${c}" data-c="${c}" aria-label="Background ${c}"></button>`).join("")}</div>`;
+  bgRow.querySelector("#c-bg").oninput=e=>{ design.bg=e.target.value; applyDesign(); };
+  bgRow.querySelectorAll(".swatches button").forEach(b=>b.onclick=()=>{ design.bg=b.dataset.c; bgRow.querySelector("#c-bg").value=b.dataset.c; applyDesign(); });
+  body.appendChild(bgRow);
+  CONTROLS.forEach(c=>{
+    if(c.length===1){ body.insertAdjacentHTML("beforeend",`<div class="dgroup">${c[0]}</div>`); return; }
+    if(isFont(c)){
+      const [k,label]=c, v=design[k]||"System";
+      const row=document.createElement("div"); row.className="ctl";
+      row.innerHTML=`<label for="c-${k}">${label}</label><select id="c-${k}">${Object.keys(FONTS).map(f=>`<option${f===v?" selected":""} style="font-family:${FONTS[f].replace(/"/g,"'")}">${f}</option>`).join("")}</select>`;
+      row.querySelector("select").onchange=e=>{ design[k]=e.target.value; applyDesign(); };
+      body.appendChild(row); return;
+    }
+    const [k,label,min,max,step,def,u]=c, v=design[k]??def;
+    const row=document.createElement("div"); row.className="ctl";
+    row.innerHTML=`<label for="c-${k}">${label}</label><output id="o-${k}">${v}${u}</output>
+      <input type="range" id="c-${k}" min="${min}" max="${max}" step="${step}" value="${v}">`;
+    row.querySelector("input").oninput=e=>{ design[k]=+e.target.value; row.querySelector("output").textContent=design[k]+u; applyDesign(); };
+    body.appendChild(row);
+  });
+}
+function settingsText(){
+  return [`Background colour: ${design.bg || "default (follows light/dark)"}`, ...CONTROLS.filter(c=>c.length>1).map(c=>{ const [k,label,,,,def,u]=c; const grp=CONTROLS.slice(0,CONTROLS.indexOf(c)).filter(x=>x.length===1).pop()[0]; return `${grp} — ${label}: ${isFont(c)?(design[k]||"System"):(design[k]??def)+u}`; })].join("\n");
+}
+const drawer=document.getElementById("drawer"), dtab=document.getElementById("dtab");
+function setDrawer(open){ drawer.classList.toggle("open",open); dtab.setAttribute("aria-expanded",open); dtab.hidden=open; if(open) drawer.querySelector("input")?.focus(); }
+dtab.onclick=()=>setDrawer(true);
+document.getElementById("dclose").onclick=()=>{ setDrawer(false); dtab.focus(); };
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"&&drawer.classList.contains("open")){ setDrawer(false); dtab.focus(); } });
+document.getElementById("dreset").onclick=()=>{ design={}; applyDesign(); buildDrawer();
+// Keep jump targets clear of the sticky top bar, whatever its height (it can wrap to two lines)
+const topbar=document.querySelector(".topbar");
+const setTopbarH=()=>root.style.setProperty("--topbar-h", topbar.offsetHeight+"px");
+new ResizeObserver(setTopbarH).observe(topbar); setTopbarH(); document.getElementById("dnote").textContent="Back to the defaults."; document.getElementById("dcode").hidden=true; };
+document.getElementById("dcopy").onclick=()=>{
+  const txt=settingsText(), note=document.getElementById("dnote"), code=document.getElementById("dcode");
+  code.value=txt;
+  navigator.clipboard?.writeText(txt).then(()=>{ note.textContent="Copied. Paste it to Claude to make these the defaults."; code.hidden=true; })
+    .catch(()=>{ code.hidden=false; code.select(); note.textContent="Select the text below and copy it."; });
+  if(!navigator.clipboard){ code.hidden=false; code.select(); note.textContent="Select the text below and copy it."; }
+};
+applyDesign(); buildDrawer();
+
+render();
+</script>

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shelf</title>
+<style>
+/* Layout: quiet grey canvas, square covers in an even grid, artist rows A–Z, a frosted player bar at the bottom */
+:root {
+  --bg: #ececec;
+  --fg: #1d1d1f;
+  --muted: #86868b;
+  --line: #dcdcde;
+  --bar: #ffffff;
+  --chip: rgba(255,255,255,.92);
+  --accent: #fa2d48;
+  --panel: #fbfbfc;
+  --sans: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1e1e20; --fg: #f5f5f7; --muted: #98989d; --line: #333336;
+    --bar: #242426; --chip: rgba(40,40,42,.92); --accent: #ff4d63; --panel: #252527; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1e1e20; --fg: #f5f5f7; --muted: #98989d; --line: #333336;
+  --bar: #242426; --chip: rgba(40,40,42,.92); --accent: #ff4d63; --panel: #252527; color-scheme: dark;
+}
+/* Design values (tuned with the old Design drawer) */
+:root {
+  --d-cover: 210px; --d-gap-x: 16px; --d-gap-y: 30px; --d-radius: 5px; --d-margin: 30px;
+  --d-h-size: 18px; --d-h-weight: 700; --d-h-gap: 12px; --d-row-gap: 40px;
+  --d-t-size: 11px; --d-t-weight: 600; --d-t-gap: 5px; --d-y-size: 10px;
+  --d-h-font: var(--sans); --d-t-font: var(--sans); --d-h-ls: -0.008em; --d-t-ls: -0.02em; --d-y-ls: -0.02em;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--sans); -webkit-font-smoothing: antialiased;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 110px;
+}
+.wrap { max-width: 1320px; margin: 0 auto; padding-inline: min(var(--d-margin), 4vw); }
+
+/* top bar: A–Z jump links on the left, collection info on the right, one line */
+.topbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg);
+  display: flex; align-items: center; justify-content: space-between; gap: 6px 16px; flex-wrap: wrap;
+  padding-block: 24px 10px;
+  /* paint the bar's background out to both screen edges so scrolling covers never peek past it */
+  box-shadow: 0 0 0 100vmax var(--bg); clip-path: inset(0 -100vmax);
+}
+.sub { font-size: 12px; color: var(--muted); }
+nav.az { display: flex; flex-wrap: wrap; gap: 0 2px; margin-left: -4px; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+nav.az a, nav.az span { font-size: 12px; font-weight: 600; min-width: 22px; height: 24px; display: grid; place-items: center; text-decoration: none; color: var(--accent); border-radius: 5px; padding: 0 4px; }
+nav.az span { color: var(--line); }
+nav.az a:hover, nav.az a:focus-visible { background: var(--line); outline: none; }
+
+/* jump targets stop just below the sticky top bar (height measured in script) */
+section, .row { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
+.row { margin-top: var(--d-row-gap); }
+#favourites { margin-top: 26px; }
+.row h2 { font-family: var(--d-h-font); font-size: var(--d-h-size); font-weight: var(--d-h-weight); letter-spacing: var(--d-h-ls); line-height: 1.25; margin: 0 0 var(--d-h-gap); }
+.empty { font-size: 13px; color: var(--muted); }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--d-cover), 1fr)); gap: var(--d-gap-y) var(--d-gap-x); }
+.cd { min-width: 0; }
+.art { position: relative; aspect-ratio: 1; max-width: 100%; }
+.cover { display: block; width: 100%; height: 100%; padding: 0; border: 0; cursor: pointer; border-radius: var(--d-radius); overflow: hidden; background: var(--line);
+  box-shadow: 0 0 0 0.5px rgba(0,0,0,.1), 0 1px 2px rgba(0,0,0,.06); }
+.cover img { width: 100%; height: 100%; object-fit: cover; display: block; transition: filter .15s; }
+.art:hover .cover img, .cover:focus-visible img { filter: brightness(.86); }
+.cover:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ov { position: absolute; bottom: 10px; width: 30px; height: 30px; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--chip); color: var(--fg); display: grid; place-items: center; padding: 0;
+  opacity: 0; transition: opacity .15s; box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+.ov svg { width: 13px; height: 13px; fill: currentColor; }
+.ov.play { left: 10px; }
+.ov.star { right: 10px; }
+.ov.star[aria-pressed="true"] { color: var(--accent); opacity: 1; }
+.art:hover .ov, .ov:focus-visible { opacity: 1; }
+.ov:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cd.playing .cover { box-shadow: 0 0 0 2px var(--accent); }
+.t { font-family: var(--d-t-font); letter-spacing: var(--d-t-ls); font-size: var(--d-t-size); font-weight: var(--d-t-weight); margin-top: var(--d-t-gap); line-height: 1.38; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.y { font-family: var(--d-t-font); letter-spacing: var(--d-y-ls); font-size: var(--d-y-size); font-weight: 400; color: var(--muted); line-height: 1.38; font-variant-numeric: tabular-nums; }
+
+.player {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+  background: var(--bar); 
+  border-top: 1px solid var(--line);
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+/* same width and side margin as the page, so the thumbnail lines up with the covers' left edge */
+.player .in { max-width: 1320px; margin: 0 auto; display: flex; align-items: center; gap: 12px; padding-inline: min(var(--d-margin), 4vw); }
+.thumb { width: 44px; height: 44px; border-radius: 4px; flex: none; background: var(--line); object-fit: cover; }
+.np { min-width: 0; flex: 1; }
+.np .a { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np .s { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.prog { height: 3px; border-radius: 2px; background: var(--line); margin-top: 6px; max-width: 360px; overflow: hidden; }
+.prog div { height: 100%; width: 0; background: var(--muted); transition: width .25s linear; }
+.ctrls { display: flex; align-items: center; gap: 4px; flex: none; }
+.cbtn { width: 38px; height: 38px; border-radius: 50%; border: 0; background: none; color: var(--fg); cursor: pointer; display: grid; place-items: center; padding: 0; }
+.cbtn svg { width: 20px; height: 20px; fill: currentColor; }
+.cbtn.main svg { width: 26px; height: 26px; }
+.cbtn:hover { background: var(--line); }
+.cbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cbtn:disabled { opacity: .3; cursor: default; background: none; }
+@media (max-width: 480px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; } }
+/* Spotify app additions */
+.topbar .right { display: flex; align-items: center; gap: 14px; }
+.linkbtn { font: 12px var(--sans); color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; }
+.linkbtn:hover, .linkbtn:focus-visible { color: var(--fg); text-decoration: underline; outline: none; }
+.gate { min-height: 60vh; display: grid; place-items: center; text-align: center; }
+.gate h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.015em; margin: 0 0 8px; }
+.gate p { color: var(--muted); font-size: 14px; margin: 0 0 22px; max-width: 42ch; line-height: 1.5; }
+.btn { font: 600 14px var(--sans); background: var(--fg); color: var(--bg); border: 0; border-radius: 999px; padding: 12px 22px; cursor: pointer; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.loading { color: var(--muted); font-size: 13px; padding-top: 40px; }
+.np .s.err { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <div class="topbar" id="topbar" hidden>
+    <nav class="az" id="az" aria-label="Jump to letter"></nav>
+    <div class="right">
+      <div class="sub" id="summary"></div>
+      <button class="linkbtn" id="refresh" type="button">Refresh</button>
+      <button class="linkbtn" id="logout" type="button">Log out</button>
+    </div>
+  </div>
+  <main id="main"></main>
+</div>
+
+<div class="player" id="player" role="region" aria-label="Now playing" hidden>
+  <div class="in">
+    <img class="thumb" id="thumb" alt="" hidden>
+    <div class="np">
+      <div class="a" id="npt">Not playing</div>
+      <div class="s" id="npa">Connecting the player…</div>
+      <div class="prog" id="prog" hidden aria-hidden="true"><div id="bar"></div></div>
+    </div>
+    <div class="ctrls" id="ctrls" hidden>
+      <button class="cbtn" id="prev" type="button" aria-label="Previous track"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+      <button class="cbtn main" id="pp" type="button" aria-label="Pause"><svg viewBox="0 0 24 24" id="ppi"></svg></button>
+      <button class="cbtn" id="next" type="button" aria-label="Next track"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</html>
