@@ -249,8 +249,9 @@ async function toggleMore(ar) {
     loadingMore.add(ar.id); render();
     try {
       const list = [];
-      let url = `/artists/${encodeURIComponent(ar.id)}/albums?include_groups=album&limit=50&market=from_token`;
-      while (url && list.length < 200) {
+      // Spotify allows at most 10 per page here, so follow the "next" links
+      let url = `/artists/${encodeURIComponent(ar.id)}/albums?include_groups=album&limit=10&market=from_token`;
+      while (url && list.length < 100) {
         const r = await api(url);
         if (!r.ok) throw new Error("Couldn't load more albums (" + r.status + ")");
         const page = await r.json();
