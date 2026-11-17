@@ -164,13 +164,17 @@ section, .row, .cd { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
 .toast button { font: 600 13px var(--sans); color: var(--bg); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .row h2 { display: flex; align-items: baseline; }
 
+/* in the grid, More sits at the right edge of the artist's first cover (after the name if the name is longer) */
+body.shelf #artists .an-name { flex: none; }
+body.shelf #artists .an-acts { margin-left: auto; padding-left: 6px; padding-right: 0; margin-right: -5px; }  /* -5px: the link's own padding, so its text lines up with the cover edge */
+
 /* "Side by side" layout: every album sits on one even grid in artist order; an artist's albums wrap
    onto the next line like any others, and the artist's name sits above their first album */
 body.shelf #artists { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--d-cover), 1fr)); gap: var(--d-gap-y) var(--d-gap-x); margin-top: var(--d-row-gap); }
 body.shelf #artists section, body.shelf #artists .row, body.shelf #artists .grid { display: contents; }
 body.shelf #artists .row h2 { display: none; }
 .an { display: none; }
-body.shelf #artists .an { display: block; position: relative; height: 1.25em; font-family: var(--d-h-font); font-size: var(--d-h-size); font-weight: var(--d-h-weight); letter-spacing: var(--d-h-ls); line-height: 1.25; margin-bottom: var(--d-h-gap); white-space: nowrap; overflow: visible; }
+body.shelf #artists .an { display: flex; align-items: baseline; position: relative; height: 1.25em; font-family: var(--d-h-font); font-size: var(--d-h-size); font-weight: var(--d-h-weight); letter-spacing: var(--d-h-ls); line-height: 1.25; margin-bottom: var(--d-h-gap); white-space: nowrap; overflow: visible; }
 @media (max-width: 480px) { body.shelf #artists { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 14px; } }
 .linkbtn { font: 12px var(--sans); color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; }
 .linkbtn:hover, .linkbtn:focus-visible { color: var(--fg); text-decoration: underline; outline: none; }
