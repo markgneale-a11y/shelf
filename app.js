@@ -126,11 +126,11 @@ const saveFavs = () => store.set("shelf-favs-spotify", [...favs]);
 const ICON_PLAY = '<path d="M7 4v16l13-8z"/>', ICON_PAUSE = '<path d="M7 5h4v14H7zM13 5h4v14h-4z"/>';
 const STAR = '<svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6L2.5 9.4l6.6-.8z"/></svg>';
 
-function cdEl(a, sub) {
+function cdEl(a, sub, header = "") {
   const d = document.createElement("div");
   d.className = "cd" + (nowAlbumUri === a.uri ? " playing" : ""); d.dataset.uri = a.uri;
   const fav = favs.has(a.id);
-  d.innerHTML = `<div class="art">
+  d.innerHTML = `<div class="an">${esc(header)}</div><div class="art">
       <button class="cover" type="button" aria-label="Play ${esc(a.title)} by ${esc(a.artist)}"><img alt="" loading="lazy" src="${esc(a.img)}"></button>
       <button class="ov play" type="button" tabindex="-1" aria-hidden="true"><svg viewBox="0 0 24 24">${ICON_PLAY}</svg></button>
       <button class="ov star" type="button" aria-pressed="${fav}" aria-label="${fav ? "Remove from" : "Add to"} favourites">${STAR}</button>
@@ -174,13 +174,22 @@ function render() {
       if (i === 0) box.id = "l-" + (L === "#" ? "num" : L);   // jump target: the letter's first artist
       box.innerHTML = `<h2>${esc(ar.name)}</h2>`;
       const g = document.createElement("div"); g.className = "grid";
-      ar.albums.forEach(a => g.appendChild(cdEl(a, a.year)));
+      ar.albums.forEach((a, i) => g.appendChild(cdEl(a, a.year, i === 0 ? ar.name : "")));
       box.appendChild(g); s.appendChild(box);
     }
     wrapAll.appendChild(s);
   }
   $("az").innerHTML = `<a href="#favourites">Favourites</a>` +
     letters.map(L => groups[L] ? `<a href="#l-${L === "#" ? "num" : L}">${L}</a>` : `<span aria-hidden="true">${L}</span>`).join("");
+  // Letter links: in the side-by-side grid the artist's row has no box of its own, so jump to its first album
+  $("az").querySelectorAll("a").forEach(link => link.onclick = e => {
+    const row = document.querySelector(link.getAttribute("href"));
+    if (!row) return;
+    e.preventDefault();
+    const target = document.body.classList.contains("shelf") && row.classList.contains("row") ? row.querySelector(".cd") : row;
+    target.scrollIntoView({ block: "start" });
+    history.replaceState(null, "", link.getAttribute("href"));
+  });
   $("summary").textContent = `${albums.length} albums · ${artists.length} artists`;
   scrollTo(0, y);
 }
