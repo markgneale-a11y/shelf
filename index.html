@@ -45,6 +45,7 @@ body {
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 0 110px;
+  margin-top: 0;               /* no gap above the top bar, so it doesn't creep up when you scroll */
 }
 .wrap { margin: 0 auto; padding-inline: min(var(--d-margin), 4vw); }
 
@@ -52,7 +53,7 @@ body {
 .topbar {
   position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg);
   display: flex; align-items: center; justify-content: space-between; gap: 6px 16px; flex-wrap: wrap;
-  padding-block: 24px 10px;
+  padding-block: 32px 10px;
   /* paint the bar's background out to both screen edges so scrolling covers never peek past it */
   box-shadow: 0 0 0 100vmax var(--bg); clip-path: inset(0 -100vmax);
 }
