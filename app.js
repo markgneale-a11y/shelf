@@ -8,6 +8,7 @@ const SCOPES = [
   "streaming",                  // play music in this browser tab
   "user-read-email", "user-read-private",
   "user-read-playback-state", "user-modify-playback-state",
+  "user-follow-read", "user-follow-modify",   // see and follow artists, so saving an album follows its artist
 ].join(" ");
 
 // Spotify only accepts 127.0.0.1 (not "localhost") for local apps, so keep everyone on one address
@@ -308,7 +309,48 @@ async function saveAlbum(a) {
   if (!canModify()) return needPermission();
   if (!await libraryCall("PUT", [a.id])) return;
   albums.push({ ...a }); store.set("shelf-library", albums); render();
+  // Saving an album also follows its artist, so the two stay in sync
+  if (!canFollow()) return toast(`Saved “${a.title}”. Reconnect so Shelf can follow artists too.`, "Reconnect", login, 10000);
+  if (!isFollowed(a.artistId)) await followArtists([{ id: a.artistId, name: a.artist, img: a.thumb }]);
   toast(`Saved “${a.title}” to your library`, "Undo", () => removeAlbums([a], `“${a.title}”`, false));
+}
+
+// ---------- Followed artists ----------
+const canFollow = () => { const sc = store.get("shelf-token")?.scope || ""; return sc.includes("user-follow-read") && sc.includes("user-follow-modify"); };
+let followed = store.get("shelf-followed", null);          // {at, list: [{id, name, img}]}
+const isFollowed = id => !!followed?.list.some(f => f.id === id);
+async function loadFollowed(force = false) {
+  if (!canFollow()) return null;
+  if (!force && followed && Date.now() - followed.at < 15 * 60 * 1000) return followed.list;
+  const list = [];
+  let url = "/me/following?type=artist&limit=50";
+  while (url) {
+    const r = await api(url);
+    if (r.status === 429) throw new Error("Spotify is busy right now. Try again in a minute.");
+    if (!r.ok) throw new Error("Couldn't load the artists you follow (" + r.status + ")");
+    const page = (await r.json()).artists;
+    page.items.forEach(ar => list.push({ id: ar.id, name: ar.name, img: pickImage(ar.images, 64) }));
+    url = page.next ? page.next.replace("https://api.spotify.com/v1", "") : null;
+  }
+  followed = { at: Date.now(), list }; store.set("shelf-followed", followed);
+  return list;
+}
+// Follows artists (Spotify's general /me/library endpoint, falling back to the older /me/following)
+async function followArtists(list) {
+  for (let i = 0; i < list.length; i += 20) {
+    const chunk = list.slice(i, i + 20);
+    let r = await api("/me/library?uris=" + encodeURIComponent(chunk.map(ar => "spotify:artist:" + ar.id).join(",")), { method: "PUT" });
+    if (!r.ok) r = await api("/me/following?type=artist&ids=" + chunk.map(ar => ar.id).join(","), { method: "PUT" });
+    if (!r.ok) { toast("Couldn't follow " + (chunk.length > 1 ? "those artists" : chunk[0].name) + " (" + r.status + ")"); return false; }
+    if (followed) { followed.list.push(...chunk.filter(ar => !isFollowed(ar.id))); store.set("shelf-followed", followed); }
+  }
+  return true;
+}
+// Artists on the shelf you don't follow yet
+function unfollowedShelfArtists() {
+  const seen = new Map();
+  for (const a of albums) if (a.artistId && !isFollowed(a.artistId) && !seen.has(a.artistId)) seen.set(a.artistId, { id: a.artistId, name: a.artist, img: a.thumb });
+  return [...seen.values()];
 }
 
 async function removeAlbums(list, label, offerUndo = true) {
@@ -481,27 +523,48 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && $("player"
 document.addEventListener("click", e => { if ($("player").classList.contains("open") && !e.target.closest("#player")) setDrawer(false); });
 $("pp").onclick = () => player?.togglePlay();
 $("logout").onclick = logout;
-$("refresh").onclick = async () => { $("refresh").textContent = "Refreshing…"; try { await loadLibrary(); } finally { $("refresh").textContent = "Refresh"; } };
+$("refresh").onclick = async () => { $("refresh").textContent = "Refreshing…"; try { await loadLibrary(); loadFollowed(true).catch(() => {}); } finally { $("refresh").textContent = "Refresh"; } };
 
 // ---------- Search: find an artist by name, then add their albums ----------
 const search = $("search"), q = $("q"), sres = $("sres");
 var searchArtist = null; let searchTimer = null, searchSeq = 0;   // var: render() may run before this line
 function setSearch(open) {
   search.hidden = !open; $("searchBtn").setAttribute("aria-expanded", open);
-  if (open) { setSettings(false); setDrawer(false); q.focus(); q.select(); }
+  if (open) { setSettings(false); setDrawer(false); q.focus(); q.select(); if (!searchArtist && q.value.trim().length < 2) showFollowed(); }
 }
 function inLibrary(a) {
   return albums.some(x => x.id === a.id || (x.artistId === a.artistId && normTitle(x.title) === normTitle(a.title)));
 }
-function showArtistResults(list) {
-  sres.innerHTML = "";
-  if (!list.length) { sres.innerHTML = '<div class="msg">No artists found</div>'; return; }
+// With the search box empty, the panel lists the artists you follow so you can go through them
+async function showFollowed() {
+  const seq = searchSeq;
+  if (!canFollow()) {
+    sres.innerHTML = '<div class="ahd"><span class="sub" style="flex:1">Reconnect so Shelf can list the artists you follow and follow artists when you save albums.</span><button class="back" type="button">Reconnect</button></div>';
+    sres.querySelector(".back").onclick = login; return;
+  }
+  if (!followed) sres.innerHTML = '<div class="msg">Loading the artists you follow…</div>';
+  let list;
+  try { list = await loadFollowed(); } catch (e) { if (seq === searchSeq) sres.innerHTML = `<div class="msg">${esc(e.message)}</div>`; return; }
+  if (seq !== searchSeq || searchArtist || q.value.trim().length >= 2) return;
+  const count = id => albums.filter(a => a.artistId === id).length;
+  const sorted = [...list].sort((x, y) => sortKey(x.name).localeCompare(sortKey(y.name), undefined, { sensitivity: "base" }));
+  const missing = unfollowedShelfArtists();
+  sres.innerHTML = `<div class="ahd"><h3>Artists you follow</h3><span class="sub">${list.length}</span></div>` +
+    (missing.length ? `<div class="ahd"><span class="sub" style="flex:1">${missing.length} artist${missing.length > 1 ? "s" : ""} on your shelf ${missing.length > 1 ? "aren't" : "isn't"} followed yet.</span><button class="back" type="button" id="followAll">Follow ${missing.length > 1 ? "them" : "it"}</button></div>` : "");
+  if (missing.length) $("followAll").onclick = async e => { e.target.textContent = "Following…"; if (await followArtists(missing)) toast(`Now following ${missing.length} more artist${missing.length > 1 ? "s" : ""}`); showFollowed(); };
+  if (!sorted.length) sres.insertAdjacentHTML("beforeend", '<div class="msg">You don\'t follow any artists yet</div>');
+  showArtistResults(sorted.map(ar => ({ id: ar.id, name: ar.name, images: ar.img ? [{ url: ar.img, width: 64 }] : [], have: count(ar.id) })), true);
+}
+
+function showArtistResults(list, append = false) {
+  if (!append) sres.innerHTML = "";
+  if (!list.length && !append) { sres.innerHTML = '<div class="msg">No artists found</div>'; return; }
   for (const ar of list) {
     const have = albums.filter(a => a.artistId === ar.id).length;
     const b = document.createElement("button"); b.type = "button"; b.className = "ares";
     const img = pickImage(ar.images, 64);
     b.innerHTML = (img ? `<img alt="" src="${esc(img)}">` : '<span class="ph"></span>') +
-      `<span><b>${esc(ar.name)}</b><small>${have ? `${have} album${have > 1 ? "s" : ""} in your library` : esc((ar.genres || []).slice(0, 2).join(", "))}</small></span>`;
+      `<span><b>${esc(ar.name)}</b><small>${have ? `${have} album${have > 1 ? "s" : ""} in your library` : append ? "None in your library" : esc((ar.genres || []).slice(0, 2).join(", "))}</small></span>`;
     b.onclick = () => openArtist({ id: ar.id, name: ar.name });
     sres.appendChild(b);
   }
@@ -509,7 +572,7 @@ function showArtistResults(list) {
 async function runSearch() {
   const text = q.value.trim(); const seq = ++searchSeq;
   searchArtist = null;
-  if (text.length < 2) { sres.innerHTML = ""; return; }
+  if (text.length < 2) { showFollowed(); return; }
   const r = await api(`/search?type=artist&limit=8&q=${encodeURIComponent(text)}`);
   if (seq !== searchSeq) return;
   if (!r.ok) { sres.innerHTML = `<div class="msg">${r.status === 429 ? "Spotify is busy right now. Try again in a minute." : "Search didn't work (" + r.status + ")"}</div>`; return; }
