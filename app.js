@@ -681,9 +681,20 @@ function updateNewChip() {
   b.classList.toggle("unseen", !!n && !newState.seen);
 }
 let newTimer = null;
+// Only one Shelf window checks at a time: the one holding a lock it refreshes every few seconds
+const TAB_ID = Math.random().toString(36).slice(2);
+function holdCheckLock() {
+  const lock = store.get("shelf-new-lock", null);
+  if (lock && lock.tab !== TAB_ID && Date.now() - lock.at < 20000) return false;
+  store.set("shelf-new-lock", { tab: TAB_ID, at: Date.now() });
+  return true;
+}
 async function checkNewReleases() {
   clearTimeout(newTimer);
   if (!store.get("shelf-token") || !albums.length) return;
+  newState = store.get("shelf-new", newState);   // pick up progress another window made
+  if (new Date().getDay() !== 1) return;    // only on Mondays; whatever was found stays until next Monday
+  if (!holdCheckLock()) { newTimer = setTimeout(checkNewReleases, 30000); return; }
   const week = thisMonday();
   if (newState?.week !== week) { newState = { week, done: [], found: newState?.found || [], seen: newState?.seen ?? true, fresh: [] }; saveNew(); }
   const artists = [...new Map(albums.filter(a => a.artistId).map(a => [a.artistId, { id: a.artistId, name: a.artist }])).values()];
@@ -710,12 +721,12 @@ async function checkNewReleases() {
     }
     newState.done.push(ar.id); saveNew(); updateNewChip();
   } catch {}
-  newTimer = setTimeout(checkNewReleases, 3000);
+  newTimer = setTimeout(checkNewReleases, 6000);
 }
 function showNew() {
   searchArtist = null; searchSeq++;
   const list = newReleases();
-  const checking = newState?.fresh ? ` · still checking (${newState.done.length} of ${new Set(albums.map(a => a.artistId)).size})` : "";
+  const checking = newState?.fresh && new Date().getDay() === 1 ? ` · still checking (${newState.done.length} of ${new Set(albums.map(a => a.artistId)).size})` : "";
   sres.innerHTML = `<div class="ahd"><button class="back" type="button">← Back</button><h3>New releases</h3>` +
     `<span class="sub">From artists on your shelf, last 8 weeks${checking}</span></div><div class="sgrid"></div>`;
   sres.querySelector(".back").onclick = () => { q.value = ""; runSearch(); q.focus(); };
@@ -760,7 +771,7 @@ store.del("shelf-design");               // old Design drawer settings are no lo
   initPlayer();
   // Re-check Spotify on opening only if the saved copy is over 15 minutes old (Refresh in Settings forces it)
   const fresh = albums.length && Date.now() - store.get("shelf-library-at", 0) < 15 * 60 * 1000;
-  try { if (!fresh) await loadLibrary(); setTimeout(checkNewReleases, 5000); }
+  try { if (!fresh) await loadLibrary(); setTimeout(checkNewReleases, 5000); setInterval(checkNewReleases, 3600e3); }
   catch (e) {
     if (e.message === "not-logged-in" || /login failed/i.test(e.message)) showGate("Your Spotify login has expired. Please connect again.");
     else if (!albums.length) $("main").innerHTML = `<div class="loading">${esc(e.message)}</div>`;
