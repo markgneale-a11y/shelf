@@ -219,6 +219,7 @@ function render() {
   });
   $("summary").textContent = `${albums.length} albums · ${artists.length} artists`;
   scrollTo(0, y);
+  if (typeof searchArtist !== "undefined" && searchArtist) showSearchAlbums();
 }
 
 function showGate(message) {
@@ -253,27 +254,32 @@ function otherAlbums(ar) {
   return (moreCache[ar.id] || []).filter(a => !ids.has(a.id) && !titles.has(normTitle(a.title)));
 }
 
+// An artist's albums from Spotify (oldest first, one per title), kept for a week
+async function fetchArtistAlbums(ar) {
+  if (moreCache[ar.id]) return moreCache[ar.id];
+  const list = [];
+  // Spotify allows at most 10 per page here, so follow the "next" links
+  let url = `/artists/${encodeURIComponent(ar.id)}/albums?include_groups=album&limit=10&market=from_token`;
+  while (url && list.length < 50) {          // up to 5 pages: plenty for nearly every artist
+    const r = await api(url);
+    if (r.status === 429) throw new Error("Spotify is busy right now. Try again in a minute.");
+    if (!r.ok) throw new Error("Couldn't load albums (" + r.status + ")");
+    const page = await r.json();
+    page.items.forEach(a => list.push({ ...albumFromApi(a), artist: ar.name, artistId: ar.id }));
+    url = page.next ? page.next.replace("https://api.spotify.com/v1", "") : null;
+  }
+  const seen = new Map();
+  list.sort((p, q) => p.date.localeCompare(q.date)).forEach(a => { const k = normTitle(a.title); if (!seen.has(k)) seen.set(k, a); });
+  moreCache[ar.id] = [...seen.values()]; saveMoreCache();
+  return moreCache[ar.id];
+}
+
 async function toggleMore(ar) {
   if (expanded.has(ar.id)) { expanded.delete(ar.id); render(); return; }
   if (!moreCache[ar.id]) {
     loadingMore.add(ar.id); render();
-    try {
-      const list = [];
-      // Spotify allows at most 10 per page here, so follow the "next" links
-      let url = `/artists/${encodeURIComponent(ar.id)}/albums?include_groups=album&limit=10&market=from_token`;
-      while (url && list.length < 50) {          // up to 5 pages: plenty for nearly every artist
-        const r = await api(url);
-        if (r.status === 429) throw new Error("Spotify is busy right now. Try More again in a minute.");
-        if (!r.ok) throw new Error("Couldn't load more albums (" + r.status + ")");
-        const page = await r.json();
-        page.items.forEach(a => list.push({ ...albumFromApi(a), artist: ar.name, artistId: ar.id }));
-        url = page.next ? page.next.replace("https://api.spotify.com/v1", "") : null;
-      }
-      // one entry per album title, keeping the original release
-      const seen = new Map();
-      list.sort((p, q) => p.date.localeCompare(q.date)).forEach(a => { const k = normTitle(a.title); if (!seen.has(k)) seen.set(k, a); });
-      moreCache[ar.id] = [...seen.values()]; saveMoreCache();
-    } catch (e) { toast(e.message); loadingMore.delete(ar.id); render(); return; }
+    try { await fetchArtistAlbums(ar); }
+    catch (e) { toast(e.message); loadingMore.delete(ar.id); render(); return; }
     loadingMore.delete(ar.id);
   }
   if (!otherAlbums(ar).length) { toast(`You already have every ${ar.name} album`); render(); return; }
@@ -476,6 +482,78 @@ document.addEventListener("click", e => { if ($("player").classList.contains("op
 $("pp").onclick = () => player?.togglePlay();
 $("logout").onclick = logout;
 $("refresh").onclick = async () => { $("refresh").textContent = "Refreshing…"; try { await loadLibrary(); } finally { $("refresh").textContent = "Refresh"; } };
+
+// ---------- Search: find an artist by name, then add their albums ----------
+const search = $("search"), q = $("q"), sres = $("sres");
+var searchArtist = null; let searchTimer = null, searchSeq = 0;   // var: render() may run before this line
+function setSearch(open) {
+  search.hidden = !open; $("searchBtn").setAttribute("aria-expanded", open);
+  if (open) { setSettings(false); setDrawer(false); q.focus(); q.select(); }
+}
+function inLibrary(a) {
+  return albums.some(x => x.id === a.id || (x.artistId === a.artistId && normTitle(x.title) === normTitle(a.title)));
+}
+function showArtistResults(list) {
+  sres.innerHTML = "";
+  if (!list.length) { sres.innerHTML = '<div class="msg">No artists found</div>'; return; }
+  for (const ar of list) {
+    const have = albums.filter(a => a.artistId === ar.id).length;
+    const b = document.createElement("button"); b.type = "button"; b.className = "ares";
+    const img = pickImage(ar.images, 64);
+    b.innerHTML = (img ? `<img alt="" src="${esc(img)}">` : '<span class="ph"></span>') +
+      `<span><b>${esc(ar.name)}</b><small>${have ? `${have} album${have > 1 ? "s" : ""} in your library` : esc((ar.genres || []).slice(0, 2).join(", "))}</small></span>`;
+    b.onclick = () => openArtist({ id: ar.id, name: ar.name });
+    sres.appendChild(b);
+  }
+}
+async function runSearch() {
+  const text = q.value.trim(); const seq = ++searchSeq;
+  searchArtist = null;
+  if (text.length < 2) { sres.innerHTML = ""; return; }
+  const r = await api(`/search?type=artist&limit=8&q=${encodeURIComponent(text)}`);
+  if (seq !== searchSeq) return;
+  if (!r.ok) { sres.innerHTML = `<div class="msg">${r.status === 429 ? "Spotify is busy right now. Try again in a minute." : "Search didn't work (" + r.status + ")"}</div>`; return; }
+  showArtistResults((await r.json()).artists?.items || []);
+}
+q.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 300); });
+q.addEventListener("keydown", e => {
+  if (e.key === "Enter") { clearTimeout(searchTimer); const first = sres.querySelector(".ares"); first ? first.click() : runSearch(); }
+  if (e.key === "ArrowDown") { e.preventDefault(); sres.querySelector(".ares")?.focus(); }
+});
+sres.addEventListener("keydown", e => {
+  if (!e.target.classList.contains("ares")) return;
+  const all = [...sres.querySelectorAll(".ares")], i = all.indexOf(e.target);
+  if (e.key === "ArrowDown") { e.preventDefault(); all[i + 1]?.focus(); }
+  if (e.key === "ArrowUp") { e.preventDefault(); (all[i - 1] || q).focus(); }
+});
+async function openArtist(ar) {
+  searchArtist = ar;
+  sres.innerHTML = `<div class="msg">Loading ${esc(ar.name)}…</div>`;
+  try { await fetchArtistAlbums(ar); }
+  catch (e) { sres.innerHTML = `<div class="msg">${esc(e.message)}</div>`; return; }
+  if (searchArtist === ar) showSearchAlbums();
+}
+function showSearchAlbums() {
+  const ar = searchArtist; if (!ar || search.hidden) return;
+  const list = moreCache[ar.id] || [];
+  const have = list.filter(inLibrary).length;
+  sres.innerHTML = `<div class="ahd"><button class="back" type="button">← Back</button><h3>${esc(ar.name)}</h3>` +
+    `<span class="sub">${have} of ${list.length} in your library</span></div><div class="sgrid"></div>`;
+  sres.querySelector(".back").onclick = () => { searchArtist = null; runSearch(); q.focus(); };
+  const grid = sres.querySelector(".sgrid");
+  if (!list.length) grid.outerHTML = '<div class="msg">No albums found</div>';
+  for (const a of list) {
+    const own = inLibrary(a), mine = own && (albums.find(x => x.id === a.id) || albums.find(x => x.artistId === a.artistId && normTitle(x.title) === normTitle(a.title)));
+    grid.appendChild(cdEl(own ? mine : a, (a.year || "") + (own ? " · In library" : ""), null, !own));
+  }
+}
+$("searchBtn").onclick = () => setSearch(search.hidden);
+$("searchClose").onclick = () => setSearch(false);
+search.addEventListener("click", e => { if (e.target === search) setSearch(false); });
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !search.hidden) { setSearch(false); $("searchBtn").focus(); }
+  if (e.key === "/" && search.hidden && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName) && !$("topbar").hidden) { e.preventDefault(); setSearch(true); }
+});
 
 // ---------- Settings panel ----------
 const settings = $("settings"), gear = $("settingsBtn");

@@ -157,6 +157,33 @@ section, .row, .cd { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
 .opt small { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
 .srow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; }
 
+/* search: find an artist by name, then add their albums */
+.tools { display: flex; gap: 6px; align-items: center; }
+.search { position: fixed; inset: 0; z-index: 8; background: rgba(0,0,0,.18); display: flex; justify-content: center;
+  padding: calc(var(--topbar-h, 60px) + env(safe-area-inset-top, 0px) - 4px) 16px 100px; }
+.sp { width: min(980px, 100%); max-height: 100%; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.14); overflow: hidden; align-self: flex-start; }
+.sbox { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--line); color: var(--muted); }
+.sbox svg { width: 18px; height: 18px; flex: none; }
+.sbox input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font: 600 17px var(--sans); color: var(--fg); }
+.sbox input::-webkit-search-cancel-button { display: none; }
+.sres { overflow-y: auto; padding: 6px; }
+.sres:empty { display: none; }
+.sres .msg { padding: 14px 10px; color: var(--muted); font-size: 13px; }
+.ares { display: flex; align-items: center; gap: 12px; width: 100%; padding: 7px 10px; border: 0; border-radius: 7px; background: none; color: var(--fg);
+  font: 13px var(--sans); text-align: left; cursor: pointer; }
+.ares:hover, .ares:focus-visible, .ares.sel { background: var(--line); outline: none; }
+.ares img, .ares .ph { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; background: var(--line); flex: none; }
+.ares b { font-weight: 600; display: block; }
+.ares small { color: var(--muted); font-size: 12px; }
+.ahd { display: flex; align-items: center; gap: 8px; padding: 6px 6px 12px; }
+.ahd h3 { margin: 0; font-size: 16px; font-weight: 700; flex: 1; }
+.ahd .linkbtn, .back { font: 600 12px var(--sans); color: var(--accent); background: none; border: 0; cursor: pointer; padding: 4px 6px; border-radius: 5px; }
+.back:hover { background: var(--line); }
+.sgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px 14px; padding: 0 6px 12px; }
+.sgrid .an { display: none; }
+.sgrid .cd { scroll-margin: 0; }
+
 /* artist name with a quiet hover link: More (other albums) */
 .an-name { white-space: nowrap; }
 /* the links take no space until shown, so they never squeeze the name; they float just after it */
@@ -211,11 +238,27 @@ body.shelf #artists .an { display: flex; align-items: baseline; position: relati
 <div class="wrap">
   <div class="topbar" id="topbar" hidden>
     <nav class="az" id="az" aria-label="Jump to letter"></nav>
+    <div class="tools">
+    <button class="gear" id="searchBtn" type="button" aria-label="Find an artist" title="Find an artist (/)" aria-expanded="false" aria-controls="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg>
+    </button>
     <button class="gear" id="settingsBtn" type="button" aria-label="Settings" aria-expanded="false" aria-controls="settings">
       <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
     </button>
+    </div>
   </div>
   <main id="main"></main>
+</div>
+
+<div class="search" id="search" role="dialog" aria-label="Find an artist" hidden>
+  <div class="sp">
+    <div class="sbox">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg>
+      <input id="q" type="search" placeholder="Find an artist" autocomplete="off" spellcheck="false">
+      <button class="sx" id="searchClose" type="button" aria-label="Close search">&times;</button>
+    </div>
+    <div class="sres" id="sres"></div>
+  </div>
 </div>
 
 <aside class="settings" id="settings" aria-label="Settings" hidden>
