@@ -157,6 +157,21 @@ section, .row, .cd { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
 .opt small { display: block; color: var(--muted); font-size: 12px; margin-top: 1px; }
 .srow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0; }
 
+/* track peek: list button on each cover opens the album's tracks */
+.ov.peekbtn { top: 8px; bottom: auto; left: 8px; width: 24px; height: 24px; }
+.ov.peekbtn svg { width: 12px; height: 12px; }
+.ov.peekbtn:hover { color: var(--accent); }
+.peek { position: fixed; z-index: 11; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.16); overflow-y: auto; padding: 12px 10px 6px; font-size: 13px; }
+.pk-h { display: flex; align-items: flex-start; gap: 10px; padding: 0 6px 10px; }
+.pk-h > div { flex: 1; min-width: 0; }
+.pk-t { font-weight: 700; font-size: 14px; }
+.pk-s { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.pk-add { display: inline-flex; align-items: center; gap: 4px; flex: none; border: 0; border-radius: 14px; padding: 5px 10px 5px 8px;
+  background: var(--fg); color: var(--bg); font: 600 12px var(--sans); cursor: pointer; }
+.pk-add svg { width: 11px; height: 11px; }
+.pk-add:hover { background: var(--accent); color: #fff; }
+
 /* search: find an artist by name, then add their albums */
 .tools { display: flex; gap: 6px; align-items: center; }
 .search { position: fixed; inset: 0; z-index: 8; background: rgba(0,0,0,.18); display: flex; justify-content: center;

@@ -136,6 +136,7 @@ const ICON_PLAY = '<path d="M7 4v16l13-8z"/>', ICON_PAUSE = '<path d="M7 5h4v14H
 const STAR = '<svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6L2.5 9.4l6.6-.8z"/></svg>';
 
 const REMOVE = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
+const LIST = '<svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="4.5" cy="6" r="1.4"/><circle cx="4.5" cy="12" r="1.4"/><circle cx="4.5" cy="18" r="1.4"/></svg>';
 const ADD = '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>';
 
 // The artist's name with a quiet "More" link that appears on hover
@@ -152,6 +153,7 @@ function cdEl(a, sub, ar = null, ghost = false) {
   d.innerHTML = `<div class="an">${ar ? artistHead(ar) : ""}</div><div class="art">
       <button class="cover" type="button" aria-label="Play ${esc(a.title)} by ${esc(a.artist)}"><img alt="" loading="lazy" src="${esc(a.img)}"></button>
       <button class="ov play" type="button" tabindex="-1" aria-hidden="true"><svg viewBox="0 0 24 24">${ICON_PLAY}</svg></button>
+      <button class="ov peekbtn" type="button" aria-label="Show tracks on ${esc(a.title)}" title="Tracks">${LIST}</button>
       ${ghost
         ? `<button class="ov add" type="button" aria-label="Save ${esc(a.title)} to your library">${ADD}</button>`
         : `<button class="ov star" type="button" aria-pressed="${fav}" aria-label="${fav ? "Remove from" : "Add to"} favourites">${STAR}</button>
@@ -160,6 +162,7 @@ function cdEl(a, sub, ar = null, ghost = false) {
     <div class="t" title="${esc(a.title)}">${esc(a.title)}</div><div class="y">${esc(sub)}</div>`;
   d.querySelector(".cover").onclick = () => playAlbum(a);
   d.querySelector(".ov.play").onclick = () => playAlbum(a);
+  d.querySelector(".peekbtn").onclick = e => { e.stopPropagation(); peekTracks(a, d, ghost); };
   if (ghost) d.querySelector(".add").onclick = () => saveAlbum(a);
   else {
     d.querySelector(".star").onclick = () => { fav ? favs.delete(a.id) : favs.add(a.id); saveFavs(); render(); };
@@ -524,6 +527,49 @@ document.addEventListener("click", e => { if ($("player").classList.contains("op
 $("pp").onclick = () => player?.togglePlay();
 $("logout").onclick = logout;
 $("refresh").onclick = async () => { $("refresh").textContent = "Refreshing…"; try { await loadLibrary(); loadFollowed(true).catch(() => {}); } finally { $("refresh").textContent = "Refresh"; } };
+
+// ---------- Track peek: see an album's tracks before adding it ----------
+const peek = document.createElement("div"); peek.className = "peek"; peek.id = "peek"; peek.hidden = true; peek.setAttribute("role", "dialog");
+document.body.appendChild(peek);
+let peekFor = null;
+function closePeek() { peek.hidden = true; peekFor = null; }
+function placePeek(card) {
+  const r = card.querySelector(".art").getBoundingClientRect(), w = Math.min(320, innerWidth - 32), gap = 10;
+  let left = r.right + gap; if (left + w > innerWidth - 16) left = r.left - gap - w; if (left < 16) left = Math.max(16, Math.min(r.left, innerWidth - 16 - w));
+  peek.style.width = w + "px"; peek.style.left = left + "px";
+  const maxH = Math.min(innerHeight * 0.6, 520); peek.style.maxHeight = maxH + "px";
+  peek.style.top = Math.max(16, Math.min(r.top, innerHeight - 100 - Math.min(maxH, peek.offsetHeight || maxH))) + "px";
+}
+async function peekTracks(a, card, ghost) {
+  if (peekFor === a.id && !peek.hidden) return closePeek();
+  peekFor = a.id;
+  peek.innerHTML = `<div class="pk-h"><div><div class="pk-t">${esc(a.title)}</div><div class="pk-s">${esc(a.artist)}${a.year ? " · " + esc(a.year) : ""}</div></div>` +
+    (ghost ? `<button class="pk-add" type="button">${ADD}<span>Add</span></button>` : "") + `</div><ol class="tracks"><li class="msg">Loading tracks…</li></ol>`;
+  peek.hidden = false; placePeek(card);
+  if (ghost) peek.querySelector(".pk-add").onclick = () => { closePeek(); saveAlbum(a); };
+  try {
+    const info = await albumTracks(a.id);
+    if (peekFor !== a.id) return;
+    peek.querySelector(".pk-s").textContent = [a.artist, a.year, info.tracks.length + " tracks", fmt(info.tracks.reduce((n, t) => n + t.ms, 0))].filter(Boolean).join(" · ");
+    const list = peek.querySelector(".tracks"); list.innerHTML = "";
+    const discs = new Set(info.tracks.map(t => t.disc)).size > 1; let disc = 0;
+    for (const t of info.tracks) {
+      if (discs && t.disc !== disc) { disc = t.disc; list.insertAdjacentHTML("beforeend", `<li class="disc">Disc ${disc}</li>`); }
+      const li = document.createElement("li"); li.className = "trk"; li.dataset.uri = t.uri; li.title = "Play";
+      const extra = t.artists && t.artists !== info.artist ? ` <span class="ar">— ${esc(t.artists)}</span>` : "";
+      li.innerHTML = `<span class="n">${t.n}</span><span class="nm">${esc(t.name)}${extra}</span><span class="d">${fmt(t.ms)}</span>`;
+      li.onclick = () => playTrack(info, t);
+      list.appendChild(li);
+    }
+    const uris = currentTrackUris(); list.querySelectorAll(".trk").forEach(li => li.classList.toggle("now", uris.includes(li.dataset.uri)));
+    placePeek(card);
+  } catch (e) { if (peekFor === a.id) peek.querySelector(".tracks").innerHTML = `<li class="msg">${esc(e.message)}</li>`; }
+}
+document.addEventListener("click", e => { if (!peek.hidden && !peek.contains(e.target) && !e.target.closest(".peekbtn")) closePeek(); }, true);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !peek.hidden) { e.stopImmediatePropagation(); closePeek(); } }, true);
+addEventListener("scroll", () => { if (!peek.hidden) closePeek(); }, { passive: true });
+$("sres").addEventListener("scroll", () => { if (!peek.hidden) closePeek(); }, { passive: true });
+addEventListener("resize", closePeek);
 
 // ---------- Search: find an artist by name, then add their albums ----------
 const search = $("search"), q = $("q"), sres = $("sres");
