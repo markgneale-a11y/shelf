@@ -173,6 +173,13 @@ section, .row, .cd { scroll-margin-top: calc(var(--topbar-h, 60px) + 20px); }
 .pk-add svg { width: 11px; height: 11px; }
 .pk-add:hover { background: var(--accent); color: #fff; }
 
+/* "New" chip: this week's new releases from artists on your shelf */
+.newchip { height: 22px; padding: 0 9px; border: 0; border-radius: 11px; background: var(--line); color: var(--fg);
+  font: 600 11px var(--sans); cursor: pointer; letter-spacing: .01em; }
+.newchip.unseen { background: var(--accent); color: #fff; }
+.newchip:hover { filter: brightness(.95); }
+.newchip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* search: find an artist by name, then add their albums */
 .tools { display: flex; gap: 6px; align-items: center; }
 .search { position: fixed; inset: 0; z-index: 8; background: rgba(0,0,0,.18); display: flex; justify-content: center;
@@ -255,6 +262,7 @@ body.shelf #artists .an { display: flex; align-items: baseline; position: relati
   <div class="topbar" id="topbar" hidden>
     <nav class="az" id="az" aria-label="Jump to letter"></nav>
     <div class="tools">
+    <button class="newchip" id="newBtn" type="button" hidden aria-label="New releases">New</button>
     <button class="gear" id="searchBtn" type="button" aria-label="Find an artist" title="Find an artist (/)" aria-expanded="false" aria-controls="search">
       <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg>
     </button>

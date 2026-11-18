@@ -224,6 +224,7 @@ function render() {
   $("summary").textContent = `${albums.length} albums · ${artists.length} artists`;
   scrollTo(0, y);
   if (typeof searchArtist !== "undefined" && searchArtist) showSearchAlbums();
+  if (typeof newState !== "undefined") { updateNewChip(); if (!$("search").hidden && $("sres").querySelector(".ahd h3")?.textContent === "New releases") showNew(); }
 }
 
 function showGate(message) {
@@ -664,6 +665,67 @@ document.addEventListener("keydown", e => {
   if (e.key === "/" && search.hidden && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName) && !$("topbar").hidden) { e.preventDefault(); setSearch(true); }
 });
 
+// ---------- New releases: once a week (Mondays), check the artists on your shelf ----------
+// Spotify has no "new from artists I like" request, so this asks about one artist every few seconds
+// in the background, remembers where it got to, and then stays quiet until next Monday.
+const NEW_WINDOW_DAYS = 56;               // a release counts as new for 8 weeks
+function thisMonday() { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().slice(0, 10); }
+var newState = store.get("shelf-new", null);    // {week, done: [artistIds], found: [albums], seen}
+const saveNew = () => store.set("shelf-new", newState);
+function newReleases() {
+  return (newState?.found || []).filter(a => !inLibrary(a)).sort((x, y) => y.date.localeCompare(x.date));
+}
+function updateNewChip() {
+  const n = newReleases().length, b = $("newBtn");
+  b.hidden = !n; b.textContent = n ? `New ${n}` : "New";
+  b.classList.toggle("unseen", !!n && !newState.seen);
+}
+let newTimer = null;
+async function checkNewReleases() {
+  clearTimeout(newTimer);
+  if (!store.get("shelf-token") || !albums.length) return;
+  const week = thisMonday();
+  if (newState?.week !== week) { newState = { week, done: [], found: newState?.found || [], seen: newState?.seen ?? true, fresh: [] }; saveNew(); }
+  const artists = [...new Map(albums.filter(a => a.artistId).map(a => [a.artistId, { id: a.artistId, name: a.artist }])).values()];
+  const ar = artists.find(x => !newState.done.includes(x.id));
+  if (!ar) {                                // finished this week: swap in this week's results
+    if (newState.fresh) { newState.found = newState.fresh; newState.fresh = null; saveNew(); updateNewChip(); }
+    return;
+  }
+  newState.fresh ||= [...newState.found];   // an artist added to the shelf mid-week
+  const since = new Date(Date.now() - NEW_WINDOW_DAYS * 864e5).toISOString().slice(0, 10);
+  try {
+    const r = await api(`/artists/${encodeURIComponent(ar.id)}/albums?include_groups=album,single&limit=10&market=from_token`);
+    if (r.status === 429) { newTimer = setTimeout(checkNewReleases, 60000); return; }   // busy: try again in a minute
+    if (r.ok) {
+      const page = await r.json();
+      for (const a of page.items) {
+        if (a.release_date_precision !== "day" || a.release_date < since) continue;
+        const al = { ...albumFromApi(a), artist: ar.name, artistId: ar.id, kind: a.album_type };
+        if (!inLibrary(al) && !newState.fresh.some(x => x.id === al.id || (x.artistId === al.artistId && normTitle(x.title) === normTitle(al.title)))) {
+          newState.fresh.push(al);
+          if (!newState.found.some(x => x.id === al.id)) { newState.found.push(al); newState.seen = false; }
+        }
+      }
+    }
+    newState.done.push(ar.id); saveNew(); updateNewChip();
+  } catch {}
+  newTimer = setTimeout(checkNewReleases, 3000);
+}
+function showNew() {
+  searchArtist = null; searchSeq++;
+  const list = newReleases();
+  const checking = newState?.fresh ? ` · still checking (${newState.done.length} of ${new Set(albums.map(a => a.artistId)).size})` : "";
+  sres.innerHTML = `<div class="ahd"><button class="back" type="button">← Back</button><h3>New releases</h3>` +
+    `<span class="sub">From artists on your shelf, last 8 weeks${checking}</span></div><div class="sgrid"></div>`;
+  sres.querySelector(".back").onclick = () => { q.value = ""; runSearch(); q.focus(); };
+  const grid = sres.querySelector(".sgrid");
+  if (!list.length) grid.outerHTML = '<div class="msg">Nothing new right now</div>';
+  for (const a of list) grid.appendChild(cdEl(a, `${a.artist} · ${a.kind === "single" ? "Single/EP · " : ""}${new Date(a.date).toLocaleDateString(undefined, { day: "numeric", month: "short" })}`, null, true));
+  if (newState) { newState.seen = true; saveNew(); updateNewChip(); }
+}
+$("newBtn").onclick = () => { if (search.hidden) setSearch(true); showNew(); };
+
 // ---------- Settings panel ----------
 const settings = $("settings"), gear = $("settingsBtn");
 function setSettings(open) {
@@ -698,7 +760,7 @@ store.del("shelf-design");               // old Design drawer settings are no lo
   initPlayer();
   // Re-check Spotify on opening only if the saved copy is over 15 minutes old (Refresh in Settings forces it)
   const fresh = albums.length && Date.now() - store.get("shelf-library-at", 0) < 15 * 60 * 1000;
-  try { if (!fresh) await loadLibrary(); }
+  try { if (!fresh) await loadLibrary(); setTimeout(checkNewReleases, 5000); }
   catch (e) {
     if (e.message === "not-logged-in" || /login failed/i.test(e.message)) showGate("Your Spotify login has expired. Please connect again.");
     else if (!albums.length) $("main").innerHTML = `<div class="loading">${esc(e.message)}</div>`;
