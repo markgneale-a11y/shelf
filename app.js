@@ -410,16 +410,36 @@ function initPlayer() {
   const sc = document.createElement("script"); sc.src = "https://sdk.scdn.co/spotify-player.js"; document.head.appendChild(sc);
 }
 
+// Spotify sometimes forgets this browser's player (after sleep or a long idle): a 404 here.
+// Reconnect the player, wait for a fresh device, and try once more.
+function waitForDevice(ms = 8000) {
+  return new Promise(res => {
+    const t0 = Date.now(), tick = () => deviceId ? res(deviceId) : Date.now() - t0 > ms ? res(null) : setTimeout(tick, 200);
+    tick();
+  });
+}
+async function startPlayback(body) {
+  const send = () => api("/me/player/play" + (deviceId ? "?device_id=" + deviceId : ""), { method: "PUT", body: JSON.stringify(body) });
+  if (!deviceId) await waitForDevice();
+  let r = await send();
+  if (r.status === 404 && player) {
+    deviceId = null;
+    try { player.disconnect(); } catch {}
+    await player.connect();
+    if (await waitForDevice()) r = await send();
+  }
+  return r;
+}
+
 async function playAlbum(a) {
   player?.activateElement?.();           // lets browsers that need a click start audio
   // Clicking the album that's already loaded pauses or resumes it instead of starting it again
   if (player && pState && nowAlbumUri === a.uri) { player.togglePlay(); return; }
   setStatus(a.title, a.artist + " · starting…");
   $("thumb").src = a.thumb || a.img; $("thumb").hidden = false;
-  const q = deviceId ? "?device_id=" + deviceId : "";
-  const r = await api("/me/player/play" + q, { method: "PUT", body: JSON.stringify({ context_uri: a.uri }) });
+  const r = await startPlayback({ context_uri: a.uri });
   if (r.status === 403) setStatus(a.title, "Playback needs Spotify Premium", true);
-  else if (r.status === 404) setStatus(a.title, "Player not ready yet — try again in a moment", true);
+  else if (r.status === 404) setStatus(a.title, "Couldn't reach the player — try again in a moment", true);
   else if (!r.ok && r.status !== 202) setStatus(a.title, "Couldn't start playback (" + r.status + ")", true);
 }
 
@@ -510,8 +530,7 @@ async function fillDrawer() {
 async function playTrack(a, t) {
   player?.activateElement?.();
   if (player && currentTrackUris().includes(t.uri)) { player.togglePlay(); return; }
-  const q = deviceId ? "?device_id=" + deviceId : "";
-  const r = await api("/me/player/play" + q, { method: "PUT", body: JSON.stringify({ context_uri: a.uri, offset: { uri: t.uri } }) });
+  const r = await startPlayback({ context_uri: a.uri, offset: { uri: t.uri } });
   if (!r.ok && r.status !== 202) toast("Couldn't play that track (" + r.status + ")");
 }
 function setDrawer(open) {
