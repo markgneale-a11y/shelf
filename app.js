@@ -399,11 +399,20 @@ function setStatus(title, sub, isErr = false) {
   $("npt").textContent = title; $("npa").textContent = sub; $("npa").classList.toggle("err", isErr);
 }
 
+// Set by freshStart() before a reload: where you were, and what to play (only if the reload was just now)
+let resume = null;
+try { resume = JSON.parse(sessionStorage.getItem("shelf-resume") || "null"); sessionStorage.removeItem("shelf-resume"); } catch {}
+if (resume && Date.now() - resume.at > 60000) resume = null;
+
 function makePlayer() {
   player = new Spotify.Player({ name: "Shelf", volume: 0.8,
     // always answer the SDK, even if the token refresh fails, so it never waits forever
     getOAuthToken: cb => accessToken().then(cb).catch(() => cb(store.get("shelf-token")?.access || "")) });
-  player.addListener("ready", ({ device_id }) => { deviceId = device_id; if (!pState) setStatus("Not playing", "Choose an album to start"); });
+  player.addListener("ready", ({ device_id }) => {
+    deviceId = device_id; if (!pState) setStatus("Not playing", "Choose an album to start");
+    if (resume?.play) { const body = resume.play; resume.play = null; setStatus("Starting…", "Picking up where you left off");
+      startPlayback(body).then(r => { if (!r.ok && r.status !== 202) setStatus("Couldn't start playback", "Try again in a moment (" + r.status + ")", true); }); }
+  });
   player.addListener("not_ready", () => { deviceId = null; });
   player.addListener("initialization_error", ({ message }) => setStatus("Can't play in this browser", message, true));
   player.addListener("authentication_error", () => setStatus("Spotify login expired", "Please log out and connect again", true));
@@ -430,11 +439,13 @@ function rebuildPlayer() {
 }
 // After the Mac sleeps the player's connection is usually dead: notice the gap and rebuild it
 let lastTick = Date.now();
-setInterval(() => { const gap = Date.now() - lastTick; lastTick = Date.now(); if (gap > 5 * 60 * 1000) rebuildPlayer(); }, 20000);
+// A fresh page load is the only thing that reliably revives Spotify's player, so reload when nothing is playing
+function onWake() { if (!pState || pState.paused) freshStart(); else rebuildPlayer(); }
+setInterval(() => { const gap = Date.now() - lastTick; lastTick = Date.now(); if (gap > 5 * 60 * 1000) onWake(); }, 20000);
 let hiddenAt = 0;
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) hiddenAt = Date.now();
-  else if (hiddenAt && Date.now() - hiddenAt > 30 * 60 * 1000) rebuildPlayer();
+  else if (hiddenAt && Date.now() - hiddenAt > 30 * 60 * 1000) onWake();
 });
 
 // Spotify sometimes forgets this browser's player (after sleep or a long idle): a 404 here.
@@ -445,15 +456,29 @@ function waitForDevice(ms = 8000) {
     tick();
   });
 }
+// Reload the page, keeping your place, and optionally start some music once the new player is ready
+function freshStart(playBody = null) {
+  try {
+    sessionStorage.setItem("shelf-resume", JSON.stringify({ y: scrollY, play: playBody, at: Date.now() }));
+    sessionStorage.setItem("shelf-reloaded-at", String(Date.now()));
+  } catch {}
+  location.reload();
+}
+function recentlyReloaded() { try { return Date.now() - +(sessionStorage.getItem("shelf-reloaded-at") || 0) < 60000; } catch { return true; } }
+
 async function startPlayback(body) {
   const send = () => api("/me/player/play" + (deviceId ? "?device_id=" + deviceId : ""), { method: "PUT", body: JSON.stringify(body) });
   let rebuilt = false;
   if (!deviceId) await (rebuilding || waitForDevice(3000));
   if (!deviceId) { await rebuildPlayer(); rebuilt = true; }
-  if (!deviceId && window.Spotify) return { ok: false, status: 404 };   // the player won't start: say so now
+  if (!deviceId && window.Spotify) {
+    if (!recentlyReloaded()) { freshStart(body); return new Promise(() => {}); }   // reload and play from there
+    return { ok: false, status: 404 };      // already tried a reload just now: say so
+  }
   let r;
   try { r = await send(); } catch { r = { ok: false, status: 0 }; }
   if (r.status === 404 && window.Spotify && !rebuilt) {
+    if (!recentlyReloaded()) { freshStart(body); return new Promise(() => {}); }
     await rebuildPlayer();
     if (deviceId) { try { r = await send(); } catch { r = { ok: false, status: 0 }; } }
   }
@@ -816,7 +841,7 @@ store.del("shelf-design");               // old Design drawer settings are no lo
   try { await finishLogin(); }
   catch (e) { showGate(e.message); return; }
   if (!store.get("shelf-token")) { showGate(); return; }
-  if (albums.length) render();          // show the cached shelf straight away
+  if (albums.length) { render(); if (resume?.y) scrollTo(0, resume.y); }   // show the cached shelf straight away
   initPlayer();
   // Re-check Spotify on opening only if the saved copy is over 15 minutes old (Refresh in Settings forces it)
   const fresh = albums.length && Date.now() - store.get("shelf-library-at", 0) < 15 * 60 * 1000;
