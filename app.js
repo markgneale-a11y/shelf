@@ -39,8 +39,13 @@ async function login() {
   location.assign("https://accounts.spotify.com/authorize?" + q);
 }
 
+// fetch that gives up after a while, so a dead connection (e.g. just after waking the Mac) can't hang the app
+function timedFetch(url, opts = {}, ms = 15000) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  return fetch(url, { ...opts, signal: ctl.signal }).finally(() => clearTimeout(t));
+}
 async function tokenRequest(params) {
-  const r = await fetch("https://accounts.spotify.com/api/token", {
+  const r = await timedFetch("https://accounts.spotify.com/api/token", {
     method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: CLIENT_ID, ...params }),
   });
@@ -78,7 +83,7 @@ function logout() {
 }
 
 async function api(path, opts = {}) {
-  const go = async () => fetch("https://api.spotify.com/v1" + path, {
+  const go = async () => timedFetch(path.startsWith("http") ? path : "https://api.spotify.com/v1" + path, {
     ...opts, headers: { Authorization: "Bearer " + await accessToken(), "Content-Type": "application/json", ...(opts.headers || {}) },
   });
   let r = await go();
@@ -394,21 +399,43 @@ function setStatus(title, sub, isErr = false) {
   $("npt").textContent = title; $("npa").textContent = sub; $("npa").classList.toggle("err", isErr);
 }
 
+function makePlayer() {
+  player = new Spotify.Player({ name: "Shelf", volume: 0.8,
+    // always answer the SDK, even if the token refresh fails, so it never waits forever
+    getOAuthToken: cb => accessToken().then(cb).catch(() => cb(store.get("shelf-token")?.access || "")) });
+  player.addListener("ready", ({ device_id }) => { deviceId = device_id; if (!pState) setStatus("Not playing", "Choose an album to start"); });
+  player.addListener("not_ready", () => { deviceId = null; });
+  player.addListener("initialization_error", ({ message }) => setStatus("Can't play in this browser", message, true));
+  player.addListener("authentication_error", () => setStatus("Spotify login expired", "Please log out and connect again", true));
+  player.addListener("account_error", () => setStatus("Spotify Premium is needed", "Playing music here needs a Premium account", true));
+  player.addListener("playback_error", ({ message }) => setStatus("Couldn't play that", message, true));
+  player.addListener("player_state_changed", s => { pState = s; pStateAt = performance.now(); showState(); });
+  player.connect();
+}
 function initPlayer() {
   $("player").hidden = false;
-  window.onSpotifyWebPlaybackSDKReady = () => {
-    player = new Spotify.Player({ name: "Shelf", volume: 0.8, getOAuthToken: cb => accessToken().then(cb).catch(() => {}) });
-    player.addListener("ready", ({ device_id }) => { deviceId = device_id; if (!pState) setStatus("Not playing", "Choose an album to start"); });
-    player.addListener("not_ready", () => { deviceId = null; setStatus("Player offline", "Reconnecting…"); });
-    player.addListener("initialization_error", ({ message }) => setStatus("Can't play in this browser", message, true));
-    player.addListener("authentication_error", () => setStatus("Spotify login expired", "Please log out and connect again", true));
-    player.addListener("account_error", () => setStatus("Spotify Premium is needed", "Playing music here needs a Premium account", true));
-    player.addListener("playback_error", ({ message }) => setStatus("Couldn't play that", message, true));
-    player.addListener("player_state_changed", s => { pState = s; pStateAt = performance.now(); showState(); });
-    player.connect();
-  };
+  window.onSpotifyWebPlaybackSDKReady = makePlayer;
   const sc = document.createElement("script"); sc.src = "https://sdk.scdn.co/spotify-player.js"; document.head.appendChild(sc);
 }
+// Throw the old player away and start a fresh one (used after sleep, or when Spotify has lost it)
+let rebuilding = null;
+function rebuildPlayer() {
+  if (!window.Spotify) return Promise.resolve();
+  return rebuilding ??= (async () => {
+    deviceId = null;
+    try { player?.disconnect(); } catch {}
+    makePlayer();
+    await waitForDevice(10000);
+  })().finally(() => rebuilding = null);
+}
+// After the Mac sleeps the player's connection is usually dead: notice the gap and rebuild it
+let lastTick = Date.now();
+setInterval(() => { const gap = Date.now() - lastTick; lastTick = Date.now(); if (gap > 5 * 60 * 1000) rebuildPlayer(); }, 20000);
+let hiddenAt = 0;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) hiddenAt = Date.now();
+  else if (hiddenAt && Date.now() - hiddenAt > 30 * 60 * 1000) rebuildPlayer();
+});
 
 // Spotify sometimes forgets this browser's player (after sleep or a long idle): a 404 here.
 // Reconnect the player, wait for a fresh device, and try once more.
@@ -420,13 +447,15 @@ function waitForDevice(ms = 8000) {
 }
 async function startPlayback(body) {
   const send = () => api("/me/player/play" + (deviceId ? "?device_id=" + deviceId : ""), { method: "PUT", body: JSON.stringify(body) });
-  if (!deviceId) await waitForDevice();
-  let r = await send();
-  if (r.status === 404 && player) {
-    deviceId = null;
-    try { player.disconnect(); } catch {}
-    await player.connect();
-    if (await waitForDevice()) r = await send();
+  let rebuilt = false;
+  if (!deviceId) await (rebuilding || waitForDevice(3000));
+  if (!deviceId) { await rebuildPlayer(); rebuilt = true; }
+  if (!deviceId && window.Spotify) return { ok: false, status: 404 };   // the player won't start: say so now
+  let r;
+  try { r = await send(); } catch { r = { ok: false, status: 0 }; }
+  if (r.status === 404 && window.Spotify && !rebuilt) {
+    await rebuildPlayer();
+    if (deviceId) { try { r = await send(); } catch { r = { ok: false, status: 0 }; } }
   }
   return r;
 }
@@ -434,12 +463,13 @@ async function startPlayback(body) {
 async function playAlbum(a) {
   player?.activateElement?.();           // lets browsers that need a click start audio
   // Clicking the album that's already loaded pauses or resumes it instead of starting it again
-  if (player && pState && nowAlbumUri === a.uri) { player.togglePlay(); return; }
+  if (player && deviceId && pState && nowAlbumUri === a.uri) { player.togglePlay(); return; }
   setStatus(a.title, a.artist + " · starting…");
   $("thumb").src = a.thumb || a.img; $("thumb").hidden = false;
   const r = await startPlayback({ context_uri: a.uri });
   if (r.status === 403) setStatus(a.title, "Playback needs Spotify Premium", true);
   else if (r.status === 404) setStatus(a.title, "Couldn't reach the player — try again in a moment", true);
+  else if (r.status === 0) setStatus(a.title, "No connection to Spotify — check your internet and try again", true);
   else if (!r.ok && r.status !== 202) setStatus(a.title, "Couldn't start playback (" + r.status + ")", true);
 }
 
